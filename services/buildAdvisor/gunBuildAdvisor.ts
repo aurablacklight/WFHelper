@@ -170,15 +170,37 @@ function modFits(
   return !strings(mod.incompatibilityTags).some((tag) => weaponTags.includes(tag));
 }
 
-// A mod and its Flawed, Primed and Galvanized forms share a path stem and cannot
-// be equipped together. Forms named differently are not caught.
-function modFamily(type: string, compat: string): string {
-  const stem = type
+// A mod and its other forms cannot be equipped together. Flawed, Primed and
+// Galvanized forms share a path stem; an Amalgam form shares only the name.
+function familyKeys(type: string, compat: string, name: string): [string, string] {
+  const pathStem = type
     .slice(type.lastIndexOf("/") + 1)
     .replace(/(?:Beginner|Intermediate|Expert)$/, "")
     .replace(/SPMod$/, "Mod")
     .replace(/^Primed/, "");
-  return `${compat}|${stem}`;
+  const nameStem = name.replace(/^(?:Primed|Flawed|Amalgam|Galvanized) /, "");
+  return [`path|${compat}|${pathStem}`, `name|${compat}|${nameStem}`];
+}
+
+/** Gives every mod linked through a shared key the same family. */
+function assignFamilies(
+  candidates: readonly Candidate[],
+  keys: ReadonlyMap<string, readonly string[]>,
+): void {
+  const parent = new Map<string, string>();
+  const find = (key: string): string => {
+    let root = key;
+    for (let next = parent.get(root); next !== undefined; next = parent.get(root)) root = next;
+    return root;
+  };
+  for (const candidate of candidates) {
+    const [first, ...rest] = (keys.get(candidate.id) ?? []).map(find);
+    for (const other of rest) if (other !== first) parent.set(other, first);
+  }
+  for (const candidate of candidates) {
+    const first = keys.get(candidate.id)?.[0];
+    if (first !== undefined) candidate.family = find(first);
+  }
 }
 
 /** The highest rank owned of every mod type. Unranked stacks are rank 0. */
@@ -367,6 +389,7 @@ export function adviseGunBuild(
   const weaponTags = strings(gun.weapon.compatibilityTags);
   const owned = ownedModRanks(gun.inventory);
   const candidates: Candidate[] = [];
+  const keys = new Map<string, [string, string]>();
   for (const entry of data.mods) {
     const rank = owned.get(entry.uniqueName);
     const upgrade = asRecord(data.upgrades[entry.uniqueName]);
@@ -374,12 +397,10 @@ export function adviseGunBuild(
     const mod = modAtRank(entry, rank, data);
     // Recommending a mod with a rule the numbers leave out would overrate it.
     if (!mod?.effects.length || mod.unmodelledRule) continue;
-    candidates.push({
-      id: entry.uniqueName,
-      family: modFamily(entry.uniqueName, upgrade.compat as string),
-      ...mod,
-    });
+    candidates.push({ id: entry.uniqueName, family: entry.uniqueName, ...mod });
+    keys.set(entry.uniqueName, familyKeys(entry.uniqueName, upgrade.compat as string, mod.name));
   }
+  assignFamilies(candidates, keys);
 
   const build = findBestGunBuild(base, candidates);
   const without = (skip: Candidate): number =>

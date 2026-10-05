@@ -17,6 +17,7 @@ const MULTISHOT_GALVANIZED = "/Lotus/Upgrades/Mods/Rifle/WeaponFireIterationsSPM
 const PISTOL_DAMAGE = "/Lotus/Upgrades/Mods/Pistol/WeaponDamageAmountMod";
 const PVP_DAMAGE = "/Lotus/Upgrades/Mods/PvPMods/Rifle/FixturePvPMod";
 const BEAM_ONLY = "/Lotus/Upgrades/Mods/Rifle/FixtureBeamMod";
+const DAMAGE_AMALGAM = "/Lotus/Upgrades/Mods/DualSource/Rifle/FixtureRushMod";
 const CANNONADE = "/Lotus/Upgrades/Mods/Rifle/FixtureCannonadeMod";
 const FIRE_RATE = "/Lotus/Upgrades/Mods/Rifle/FixtureFireRateMod";
 const CONDITIONAL = "/Lotus/Upgrades/Mods/Rifle/FixtureConditionalMod";
@@ -52,6 +53,7 @@ const data: AdvisorGameData = {
   upgrades: {
     [DAMAGE]: { compat: RIFLE_BASE },
     [DAMAGE_FLAWED]: { compat: RIFLE_BASE },
+    [DAMAGE_AMALGAM]: { compat: RIFLE_BASE },
     [MULTISHOT]: { compat: RIFLE_BASE },
     [MULTISHOT_GALVANIZED]: { compat: RIFLE_BASE },
     [PISTOL_DAMAGE]: { compat: PISTOL_BASE },
@@ -73,6 +75,12 @@ const data: AdvisorGameData = {
       name: "Flawed Fixture Serration",
       fusionLimit: 0,
       levelStats: ranks(40),
+    },
+    {
+      uniqueName: DAMAGE_AMALGAM,
+      name: "Amalgam Fixture Serration",
+      fusionLimit: 0,
+      levelStats: ranks(155),
     },
     {
       uniqueName: MULTISHOT,
@@ -215,6 +223,23 @@ describe("adviseGunBuild", () => {
     if (!advice.ok) throw new Error(advice.reason);
     const galvanized = advice.mods.find((m) => m.type === MULTISHOT_GALVANIZED);
     expect(galvanized?.ignored).toEqual(["On Kill:\n+30% Multishot for 20s. Stacks up to 5x."]);
+  });
+
+  it("treats an Amalgam form as the same family even though its path differs", () => {
+    const owned = inventory({
+      Upgrades: [ranked(2, DAMAGE, 2)],
+      RawUpgrades: [
+        { ItemType: DAMAGE_AMALGAM, ItemCount: 1 },
+        { ItemType: MULTISHOT, ItemCount: 1 },
+      ],
+    });
+    const advice = adviseGunBuild(owned, RIFLE, data);
+    if (!advice.ok) throw new Error(advice.reason);
+    // +155% beats +150%, and the two cannot be equipped together.
+    expect(advice.mods.map((m) => m.name).sort()).toEqual([
+      "Amalgam Fixture Serration",
+      "Fixture Chamber",
+    ]);
   });
 
   it("applies a fire rate lock written in the mod's description", () => {
