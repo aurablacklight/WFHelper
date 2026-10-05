@@ -45,8 +45,25 @@ What this settles:
 - The arsenal's per-type rows are per projectile. Its Total row, 5,068.8, is the
   per-type sum (2,304.0) times multishot (2.2).
 
-Still not checked in game: physical bonuses, an innate element, leftover single
-elements, magazine and reload bonuses, and any multi-pellet weapon.
+Trumna Prime, saved config A, from a second screenshot: Malignant Force, Primed
+Shred, Rifle Elementalist, Rime Rounds, Vital Sense, Galvanized Chamber,
+Critical Delay and Thermite Rounds, with Stabilizer and Primary Merciless.
+
+- The first run was wrong: it gave blast 155 and toxin 51 where the arsenal
+  shows viral 102 and heat 104. The inventory stores the eight mod slots in the
+  reverse of the arsenal's order. With the order reversed, every damage number
+  matches, as do fire rate 5.83, multishot 1.8, critical chance 72%, critical
+  damage 5.3x, status 95.2% and the Total row 428.4 (238.0 × 1.8).
+- This confirms an innate element joining a mod of the same element, a negative
+  fire rate bonus, and a Galvanized mod's unconditional part.
+- Reload shows 3.1s against a computed 4.00s. The equipped arcane, Primary
+  Merciless, is not modelled; a +30% reload speed from it would give 3.08s, but
+  that figure is from memory and unchecked.
+- The arsenal lists a separate Radial Attack section for this weapon, which the
+  weapon data here does not contain.
+
+Still not checked in game: physical bonuses, leftover single elements, magazine
+bonuses, and any multi-pellet weapon.
 
 ## Cross-check against Overframe (2026-10-05)
 

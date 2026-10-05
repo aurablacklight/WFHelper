@@ -316,6 +316,7 @@ type GunConfigEvaluation =
   | { ok: false; reason: GunBuildAdviceFailure | "no-such-config" };
 
 const INVENTORY_ITEM_ID = /^[0-9a-f]{24}$/i;
+const GUN_MOD_SLOTS = 8;
 
 /** The arsenal stats of one of a gun's saved mod configs, for checking the
  *  calculator against the game. */
@@ -364,6 +365,10 @@ export function evaluateGunConfig(
     if (type && mod) mods.push({ slot, type, ...mod });
     else unrecognised.push(type ?? ref);
   });
+  // The inventory stores the eight mod slots in the reverse of the arsenal's
+  // left-to-right, top-to-bottom order, and elements combine in arsenal order.
+  const arsenalOrder = (slot: number): number => (slot < GUN_MOD_SLOTS ? -slot : slot);
+  mods.sort((a, b) => arsenalOrder(a.slot) - arsenalOrder(b.slot));
 
   return {
     ok: true,

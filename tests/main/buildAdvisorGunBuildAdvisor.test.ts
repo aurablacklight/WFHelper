@@ -18,6 +18,9 @@ const PISTOL_DAMAGE = "/Lotus/Upgrades/Mods/Pistol/WeaponDamageAmountMod";
 const PVP_DAMAGE = "/Lotus/Upgrades/Mods/PvPMods/Rifle/FixturePvPMod";
 const BEAM_ONLY = "/Lotus/Upgrades/Mods/Rifle/FixtureBeamMod";
 const DAMAGE_AMALGAM = "/Lotus/Upgrades/Mods/DualSource/Rifle/FixtureRushMod";
+const HEAT = "/Lotus/Upgrades/Mods/Rifle/FixtureHeatMod";
+const COLD = "/Lotus/Upgrades/Mods/Rifle/FixtureColdMod";
+const TOXIN = "/Lotus/Upgrades/Mods/Rifle/FixtureToxinMod";
 const CANNONADE = "/Lotus/Upgrades/Mods/Rifle/FixtureCannonadeMod";
 const FIRE_RATE = "/Lotus/Upgrades/Mods/Rifle/FixtureFireRateMod";
 const CONDITIONAL = "/Lotus/Upgrades/Mods/Rifle/FixtureConditionalMod";
@@ -54,6 +57,9 @@ const data: AdvisorGameData = {
     [DAMAGE]: { compat: RIFLE_BASE },
     [DAMAGE_FLAWED]: { compat: RIFLE_BASE },
     [DAMAGE_AMALGAM]: { compat: RIFLE_BASE },
+    [HEAT]: { compat: RIFLE_BASE },
+    [COLD]: { compat: RIFLE_BASE },
+    [TOXIN]: { compat: RIFLE_BASE },
     [MULTISHOT]: { compat: RIFLE_BASE },
     [MULTISHOT_GALVANIZED]: { compat: RIFLE_BASE },
     [PISTOL_DAMAGE]: { compat: PISTOL_BASE },
@@ -76,6 +82,18 @@ const data: AdvisorGameData = {
       fusionLimit: 0,
       levelStats: ranks(40),
     },
+    ...(
+      [
+        [HEAT, "Fixture Heat", "<DT_FIRE_COLOR>Heat"],
+        [COLD, "Fixture Cold", "<DT_FREEZE_COLOR>Cold"],
+        [TOXIN, "Fixture Toxin", "<DT_POISON_COLOR>Toxin"],
+      ] as const
+    ).map(([uniqueName, name, element]) => ({
+      uniqueName,
+      name,
+      fusionLimit: 0,
+      levelStats: [{ stats: [`+60% ${element}`] }],
+    })),
     {
       uniqueName: DAMAGE_AMALGAM,
       name: "Amalgam Fixture Serration",
@@ -161,14 +179,33 @@ describe("evaluateGunConfig", () => {
     const result = evaluateGunConfig(owned, RIFLE, 1, data);
     if (!result.ok) throw new Error(result.reason);
 
+    // Listed as the arsenal shows them: the stored order is the reverse.
     expect(result.mods.map((m) => [m.slot, m.name, m.rank])).toEqual([
-      [0, "Fixture Serration", 1],
       [2, "Fixture Chamber", 0],
+      [0, "Fixture Serration", 1],
     ]);
     // Impact 10 and heat 30 with +100%, then 1.9 pellets.
     expect(result.stats.totalDamage).toBeCloseTo(80, 6);
     expect(result.stats.multishot).toBeCloseTo(1.9, 6);
     expect(result.unrecognised).toEqual([]);
+  });
+
+  it("combines elements in arsenal order, which is the stored order reversed", () => {
+    // Seen in game on Trumna Prime: heat stored first sits in the last mod
+    // slot, so toxin and cold pair up and heat joins the innate heat.
+    const result = evaluateGunConfig(withConfigs([HEAT, COLD, TOXIN]), RIFLE, 1, data);
+    if (!result.ok) throw new Error(result.reason);
+    // Base 40: toxin and cold 24 each; heat 24 plus 30 innate.
+    expect(result.stats.damage.viral).toBeCloseTo(48, 6);
+    expect(result.stats.damage.heat).toBeCloseTo(54, 6);
+    expect(result.stats.damage.blast).toBeUndefined();
+  });
+
+  it("keeps the exilus slot after the eight mod slots", () => {
+    const refs = ["", "", "", "", "", "", "", MULTISHOT, DAMAGE_FLAWED];
+    const result = evaluateGunConfig(withConfigs(refs), RIFLE, 1, data);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.mods.map((m) => m.slot)).toEqual([7, 8]);
   });
 
   it("lists what it could not account for instead of dropping it silently", () => {
