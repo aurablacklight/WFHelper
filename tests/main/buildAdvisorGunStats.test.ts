@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computeGunStats, type GunBaseStats } from "../../services/buildAdvisor/gunStats";
-import type { ModEffect } from "../../services/buildAdvisor/modEffects";
+import type { GunBaseStats, ModEffect } from "../../config/shared/buildAdvisorTypes";
+import { computeGunStats } from "../../services/buildAdvisor/gunStats";
 
 // Expected values below are worked by hand from the base stats, not recomputed.
 const lexPrime: GunBaseStats = {

@@ -217,6 +217,10 @@ export interface PreloadAPI {
   getHelperStatus: () => Promise<IpcInvokeMap["getHelperStatus"]["return"]>;
   runHelperNow: () => Promise<IpcInvokeMap["runHelperNow"]["return"]>;
   downloadHelper: () => Promise<IpcInvokeMap["downloadHelper"]["return"]>;
+  getBuildAdvisorGuns: () => Promise<IpcInvokeMap["getBuildAdvisorGuns"]["return"]>;
+  reviewGunBuild: (
+    ...args: IpcInvokeMap["reviewGunBuild"]["args"]
+  ) => Promise<IpcInvokeMap["reviewGunBuild"]["return"]>;
   getRivens: () => Promise<IpcInvokeMap["getRivens"]["return"]>;
   getRivenWeaponNames: (
     ...args: IpcInvokeMap["getRivenWeaponNames"]["args"]

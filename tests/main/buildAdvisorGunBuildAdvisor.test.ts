@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   adviseGunBuild,
   evaluateGunConfig,
+  listOwnedGuns,
+  reviewGun,
   type AdvisorGameData,
 } from "../../services/buildAdvisor/gunBuildAdvisor";
 
@@ -51,7 +53,11 @@ const ranks = (...percents: number[]) => percents.map((p) => ({ stats: [`+${p}% 
 const data: AdvisorGameData = {
   weapons: {
     [RIFLE]: weapon(),
-    [BOW]: weapon({ holsterCategory: "BOW", trigger: "CHARGE" }),
+    [BOW]: weapon({
+      name: "/Lotus/Language/Fixture/BowName",
+      holsterCategory: "BOW",
+      trigger: "CHARGE",
+    }),
   },
   upgrades: {
     [DAMAGE]: { compat: RIFLE_BASE },
@@ -133,6 +139,7 @@ const data: AdvisorGameData = {
   ],
   strings: {
     "/Lotus/Language/Fixture/RifleName": "Fixture Rifle",
+    "/Lotus/Language/Fixture/BowName": "Fixture Bow",
     "/Lotus/Language/Fixture/CannonadeDesc":
       "Only compatible with Semi-Auto Trigger. Fire Rate cannot be modified.",
     "/Lotus/Language/Fixture/ConditionalDesc": "Damage is halved while airborne.",
@@ -165,6 +172,64 @@ const inventory = (extra: Record<string, unknown> = {}) => ({
     { ItemType: BEAM_ONLY, ItemCount: 1 },
   ],
   ...extra,
+});
+
+describe("listOwnedGuns", () => {
+  it("lists owned primaries and secondaries by name and says which it cannot build for", () => {
+    const unknown = "/Lotus/Weapons/Fixture/Unknown";
+    const owned = inventory({
+      Pistols: [{ ItemId: id(102), ItemType: unknown }],
+      Melee: [{ ItemId: id(103), ItemType: "/Lotus/Weapons/Fixture/Sword" }],
+    });
+    expect(listOwnedGuns(owned, data)).toEqual([
+      { type: BOW, name: "Fixture Bow", category: "LongGuns", unsupported: "unsupported-weapon" },
+      { type: RIFLE, name: "Fixture Rifle", category: "LongGuns", unsupported: null },
+      { type: unknown, name: "Unknown", category: "Pistols", unsupported: "unknown-weapon" },
+    ]);
+  });
+
+  it("lists a weapon owned twice once", () => {
+    const owned = inventory({
+      LongGuns: [
+        { ItemId: id(100), ItemType: RIFLE },
+        { ItemId: id(104), ItemType: RIFLE },
+      ],
+    });
+    expect(listOwnedGuns(owned, data).map((gun) => gun.type)).toEqual([RIFLE]);
+  });
+
+  it("lists nothing for a payload that is not an inventory", () => {
+    expect(listOwnedGuns(null, data)).toEqual([]);
+  });
+});
+
+describe("reviewGun", () => {
+  it("returns the recommendation next to the saved configs that hold mods", () => {
+    const owned = inventory({
+      LongGuns: [
+        {
+          ItemId: id(100),
+          ItemType: RIFLE,
+          Configs: [{ Upgrades: ["", ""] }, { Name: "Boss", Upgrades: [id(1).$oid] }, {}],
+        },
+      ],
+    });
+    const review = reviewGun(owned, RIFLE, data);
+    if (!review.advice.ok) throw new Error(review.advice.reason);
+    expect(review.advice.mods.map((m) => m.name)).toEqual(["Fixture Serration", "Fixture Chamber"]);
+    expect(review.configs.map((c) => [c.index, c.name, c.mods.map((m) => m.name)])).toEqual([
+      [1, "Boss", ["Fixture Serration"]],
+    ]);
+    // The rank 1 copy: 40 damage with +100%.
+    expect(review.configs[0].stats.totalDamage).toBeCloseTo(80, 6);
+  });
+
+  it("returns no configs with the refusal for a weapon it cannot build for", () => {
+    expect(reviewGun(inventory(), BOW, data)).toEqual({
+      advice: { ok: false, reason: "unsupported-weapon" },
+      configs: [],
+    });
+  });
 });
 
 describe("evaluateGunConfig", () => {

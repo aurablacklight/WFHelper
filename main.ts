@@ -110,6 +110,7 @@ import * as snapshotCacheIpc from "./ipc/snapshotCacheIpc";
 import * as rankedHotsetIpc from "./ipc/rankedHotsetIpc";
 import * as statsIpc from "./ipc/statsIpc";
 import * as rivensIpc from "./ipc/rivensIpc";
+import * as buildAdvisorIpc from "./ipc/buildAdvisorIpc";
 import * as tradeNotificationIpc from "./ipc/tradeNotificationIpc";
 import * as notificationLogIpc from "./ipc/notificationLogIpc";
 import * as notificationChannelsIpc from "./ipc/notificationChannelsIpc";
@@ -533,6 +534,7 @@ function registerIpcHandlers(profileStage: ProfileStage): void {
   rankedHotsetIpc.register();
   statsIpc.register();
   rivensIpc.register();
+  buildAdvisorIpc.register();
   tradeNotificationIpc.register();
   arbiIpc.register();
   profitTakerIpc.register();

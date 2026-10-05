@@ -1,30 +1,14 @@
 // The arsenal's numbers for a gun with a set of mods on it. Covers unconditional
 // mod bonuses only: no enemy, no faction, no status weighting.
 
-import type { DamageType, ModEffect, PlainGunStat } from "./modEffects";
-
-export type DamageByType = Partial<Record<DamageType, number>>;
-
-export interface GunBaseStats {
-  damage: DamageByType;
-  multishot: number;
-  criticalChance: number;
-  criticalMultiplier: number;
-  statusChance: number;
-  /** Shots per second. */
-  fireRate: number;
-  magazineSize: number;
-  /** Seconds. */
-  reloadTime: number;
-}
-
-export interface GunStats extends GunBaseStats {
-  totalDamage: number;
-  /** Average damage per second while firing, crits averaged in. */
-  burstDps: number;
-  /** Burst damage per second spread over a full magazine and its reload. */
-  sustainedDps: number;
-}
+import type {
+  DamageByType,
+  DamageType,
+  GunBaseStats,
+  GunStats,
+  ModEffect,
+  PlainGunStat,
+} from "../../config/shared/buildAdvisorTypes";
 
 type PrimaryElement = "heat" | "cold" | "electricity" | "toxin";
 

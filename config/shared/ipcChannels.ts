@@ -122,6 +122,9 @@ export const RANKED_HOTSET_SAVE = "ranked-hotset:save";
 export const SNAPSHOT_CACHE_LOAD = "snapshot-cache:load";
 export const SNAPSHOT_CACHE_SAVE = "snapshot-cache:save";
 
+export const BUILD_ADVISOR_GUNS = "build-advisor:guns";
+export const BUILD_ADVISOR_REVIEW = "build-advisor:review";
+
 export const RIVENS_GET = "get-rivens";
 export const RIVENS_GET_WEAPON_NAMES = "get-riven-weapon-names";
 export const RIVENS_GET_STAT_OPTIONS = "get-riven-stat-options";

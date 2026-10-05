@@ -1,37 +1,7 @@
 // Turns the per-rank stat lines @wfcd/items ships for a mod into numbers. A line
 // that is not matched whole is reported as ignored, never partly read.
 
-export type DamageType =
-  | "impact"
-  | "puncture"
-  | "slash"
-  | "heat"
-  | "cold"
-  | "electricity"
-  | "toxin"
-  | "blast"
-  | "radiation"
-  | "gas"
-  | "magnetic"
-  | "viral"
-  | "corrosive";
-
-export type PlainGunStat =
-  | "damage"
-  | "multishot"
-  | "criticalChance"
-  | "criticalDamage"
-  | "fireRate"
-  | "statusChance"
-  | "reloadSpeed"
-  | "magazineCapacity";
-
-/** One bonus as a fraction: +165% is 1.65, -20% is -0.2. */
-export type ModEffect =
-  | { stat: PlainGunStat; value: number }
-  | { stat: "typedDamage"; damageType: DamageType; value: number }
-  /** "Fire Rate cannot be modified": every fire rate bonus on the build is void. */
-  | { stat: "lockFireRate" };
+import type { DamageType, ModEffect, PlainGunStat } from "../../config/shared/buildAdvisorTypes";
 
 interface ParsedModRules {
   effects: ModEffect[];

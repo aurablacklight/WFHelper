@@ -21,7 +21,7 @@ The first version is pure, tested logic in `services/buildAdvisor`: a stat
 parser, a calculator and a build search. It returns plain structured data (the
 mods, the computed stats, each mod's share of the damage, and what was not
 modelled) so an agent can later call it as a tool and explain or steer the
-result. No agent, IPC or UI is built yet.
+result. No agent is built yet.
 
 ## Consequences
 
@@ -29,6 +29,5 @@ result. No agent, IPC or UI is built yet.
   relies on them.
 - Fuzzy goals ("a status primer for Steel Path") are out of reach until an agent
   or weighting layer is added on top.
-- Nothing in the app calls the advisor yet. `adviseGunBuild` and
-  `evaluateGunConfig` are allowlisted in `scripts/check-prod-dead-exports.mjs`
-  until a caller exists; remove the entries when one does.
+- The Builds view calls the advisor over IPC (`ipc/buildAdvisorIpc.ts`) and
+  only displays what it returns; no build logic lives in the renderer.

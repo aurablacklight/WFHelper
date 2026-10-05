@@ -2,8 +2,8 @@
 // picks, then single swaps until none helps: the candidate lists are too long
 // to try every set of eight.
 
-import { computeGunStats, type GunBaseStats, type GunStats } from "./gunStats";
-import type { ModEffect } from "./modEffects";
+import type { GunBaseStats, GunStats, ModEffect } from "../../config/shared/buildAdvisorTypes";
+import { computeGunStats } from "./gunStats";
 
 export interface BuildCandidate {
   id: string;

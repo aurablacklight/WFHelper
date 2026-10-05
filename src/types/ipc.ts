@@ -18,6 +18,7 @@ import type {
   WfmUpdateOrderInput,
   WfmUserProfile,
 } from "./market.js";
+import type { GunBuildReview, OwnedGunSummary } from "../../config/shared/buildAdvisorTypes.js";
 import type { DropRow, DropSearchMode, DropSearchResult } from "../../config/shared/dropTypes.js";
 import type { SpawnNode } from "../../config/shared/spawnNodeTypes.js";
 import type {
@@ -632,6 +633,14 @@ export interface IpcInvokeMap {
   downloadHelper: {
     args: [];
     return: { ok: boolean; error?: string };
+  };
+  getBuildAdvisorGuns: {
+    args: [];
+    return: OwnedGunSummary[];
+  };
+  reviewGunBuild: {
+    args: [weaponType: string];
+    return: GunBuildReview;
   };
   getRivens: {
     args: [];

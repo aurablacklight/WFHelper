@@ -5,8 +5,22 @@ import { unwrapInventoryPayload } from "../../config/shared/inventoryPayload";
 import { asRecord } from "../../config/shared/objectValidation";
 import { readPepDict, readPepExport, readWfcdItems } from "../bundledGameData";
 import { findBestGunBuild, type BuildCandidate } from "./gunBuildSearch";
-import { computeGunStats, type DamageByType, type GunBaseStats, type GunStats } from "./gunStats";
-import { parseModDescription, parseModStats, type DamageType, type ModEffect } from "./modEffects";
+import type {
+  DamageByType,
+  DamageType,
+  EvaluatedMod,
+  GunBaseStats,
+  GunBuildAdvice,
+  GunBuildAdviceFailure,
+  GunBuildReview,
+  GunCategory,
+  GunConfigEvaluation,
+  ModEffect,
+  OwnedGunSummary,
+  SavedGunConfig,
+} from "../../config/shared/buildAdvisorTypes";
+import { computeGunStats } from "./gunStats";
+import { parseModDescription, parseModStats } from "./modEffects";
 
 /** The @wfcd/items mod fields the advisor reads. */
 interface AdvisorModEntry {
@@ -26,30 +40,6 @@ export interface AdvisorGameData {
   /** DE's English string table. */
   strings: Readonly<Record<string, string>>;
 }
-
-interface AdvisedMod {
-  type: string;
-  name: string;
-  rank: number;
-  maxRank: number;
-  effects: readonly ModEffect[];
-  /** Stat lines the calculator does not model, such as "On Kill" bonuses. */
-  ignored: readonly string[];
-  /** Fraction of the build's burst damage per second lost without this mod. */
-  burstDpsShare: number;
-}
-
-type GunBuildAdviceFailure = "unknown-weapon" | "unsupported-weapon" | "weapon-not-owned";
-
-type GunBuildAdvice =
-  | {
-      ok: true;
-      weapon: { type: string; name: string };
-      mods: AdvisedMod[];
-      stats: GunStats;
-      unmodded: GunStats;
-    }
-  | { ok: false; reason: GunBuildAdviceFailure };
 
 const GUN_CATEGORIES = ["LongGuns", "Pistols"] as const;
 // Charge, held, burst and duplex triggers change damage or fire rate in ways
@@ -235,11 +225,18 @@ function fingerprintRank(value: unknown): number {
   }
 }
 
+function findGun(inventory: Record<string, unknown>, type: string): unknown {
+  for (const category of GUN_CATEGORIES) {
+    const entries: unknown = inventory[category];
+    if (!Array.isArray(entries)) continue;
+    const found: unknown = entries.find((entry) => asRecord(entry)?.ItemType === type);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function ownsWeapon(inventory: Record<string, unknown>, type: string): boolean {
-  return GUN_CATEGORIES.some((category) => {
-    const entries = inventory[category];
-    return Array.isArray(entries) && entries.some((entry) => asRecord(entry)?.ItemType === type);
-  });
+  return findGun(inventory, type) !== undefined;
 }
 
 interface RankedMod {
@@ -299,22 +296,6 @@ function ownedGun(
   return { inventory, weapon, name: name ?? weaponType, base, classes };
 }
 
-interface EvaluatedMod extends RankedMod {
-  slot: number;
-  type: string;
-}
-
-type GunConfigEvaluation =
-  | {
-      ok: true;
-      weapon: { type: string; name: string };
-      mods: EvaluatedMod[];
-      /** Equipped things with no mod data: rivens, arcanes, unknown ids. */
-      unrecognised: string[];
-      stats: GunStats;
-    }
-  | { ok: false; reason: GunBuildAdviceFailure | "no-such-config" };
-
 const INVENTORY_ITEM_ID = /^[0-9a-f]{24}$/i;
 const GUN_MOD_SLOTS = 8;
 
@@ -329,11 +310,7 @@ export function evaluateGunConfig(
   const gun = ownedGun(payload, weaponType, data);
   if (typeof gun === "string") return { ok: false, reason: gun };
 
-  const entry = GUN_CATEGORIES.flatMap((category) => {
-    const entries = gun.inventory[category];
-    return Array.isArray(entries) ? (entries as unknown[]) : [];
-  }).find((candidate) => asRecord(candidate)?.ItemType === weaponType);
-  const configs = asRecord(entry)?.Configs;
+  const configs = asRecord(findGun(gun.inventory, weaponType))?.Configs;
   const config = Array.isArray(configs) ? asRecord(configs[configIndex]) : null;
   if (!config) return { ok: false, reason: "no-such-config" };
 
@@ -430,4 +407,67 @@ export function adviseGunBuild(
     stats: build.stats,
     unmodded: computeGunStats(base, []),
   };
+}
+
+/** Every primary and secondary the inventory holds, by name. */
+export function listOwnedGuns(
+  payload: unknown,
+  data: AdvisorGameData = bundledGameData(),
+): OwnedGunSummary[] {
+  const inventory = asRecord(unwrapInventoryPayload(payload));
+  if (!inventory) return [];
+  const guns = new Map<string, OwnedGunSummary>();
+  for (const category of GUN_CATEGORIES) {
+    const entries: unknown = inventory[category];
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries.slice(0, 10_000)) {
+      const type = asRecord(entry)?.ItemType;
+      if (typeof type !== "string" || guns.has(type)) continue;
+      const gun = ownedGun(inventory, type, data);
+      guns.set(type, {
+        type,
+        name: typeof gun === "string" ? fallbackName(type, data) : gun.name,
+        category: category satisfies GunCategory,
+        unsupported: typeof gun === "string" ? gun : null,
+      });
+    }
+  }
+  return [...guns.values()].sort(
+    (a, b) => a.name.localeCompare(b.name) || a.type.localeCompare(b.type),
+  );
+}
+
+function fallbackName(type: string, data: AdvisorGameData): string {
+  const key = asRecord(data.weapons[type])?.name;
+  const name = typeof key === "string" ? data.strings[key] : undefined;
+  return name ?? type.slice(type.lastIndexOf("/") + 1);
+}
+
+/** The recommendation for one gun beside its saved configs. */
+export function reviewGun(
+  payload: unknown,
+  weaponType: string,
+  data: AdvisorGameData = bundledGameData(),
+): GunBuildReview {
+  const advice = adviseGunBuild(payload, weaponType, data);
+  if (!advice.ok) return { advice, configs: [] };
+
+  const inventory = asRecord(unwrapInventoryPayload(payload)) ?? {};
+  const rawConfigs = asRecord(findGun(inventory, weaponType))?.Configs;
+  const configs: SavedGunConfig[] = [];
+  (Array.isArray(rawConfigs) ? rawConfigs.slice(0, 16) : []).forEach((raw, index) => {
+    const config = asRecord(raw);
+    const refs: unknown = config?.Upgrades;
+    if (!Array.isArray(refs) || !refs.some((ref) => typeof ref === "string" && ref !== "")) return;
+    const evaluation = evaluateGunConfig(payload, weaponType, index, data);
+    if (!evaluation.ok) return;
+    configs.push({
+      index,
+      name: typeof config?.Name === "string" && config.Name ? config.Name.slice(0, 120) : null,
+      mods: evaluation.mods,
+      unrecognised: evaluation.unrecognised,
+      stats: evaluation.stats,
+    });
+  });
+  return { advice, configs };
 }

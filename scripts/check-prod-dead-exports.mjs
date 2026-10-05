@@ -29,9 +29,6 @@ const ALLOWLIST = new Set([
   // Production implementations exported for the RivenParser.js parity cases.
   "unparseBuff",
   "unparseCurse",
-  // Build advisor experiment: no IPC or UI caller yet (docs/adr/0001). Remove with the first caller.
-  "adviseGunBuild",
-  "evaluateGunConfig",
 ]);
 
 // Where exports are *defined* (main production tree).
