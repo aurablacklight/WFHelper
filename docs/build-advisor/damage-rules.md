@@ -18,10 +18,35 @@ left out. The code and any later agent should work from this page, not memory.
 | `damagePerShot` is indexed in DE's damage type order    | Trumna Prime (heat), Prisma Detron data | n/a                      |
 | `damagePerShot` is per pellet when multishot is above 1 | Hek data: 75 × 7 pellets = 525          | No                       |
 
-Wiki pages were read on 2026-10-05. Nothing has been compared with in-game
-arsenal numbers yet; that is the next step. Run
+Wiki pages were read on 2026-10-05. The "Checked against the game" column
+predates the validation section below, which is the current record. To check
+another weapon, run
 `node scripts/dev/advise-gun-build.cjs <inventory.json> "<weapon name>"` after
 `pnpm run build:main` and compare each saved config with the arsenal.
+
+## In-game validation (2026-10-05)
+
+Lex Prime, saved config A, read from an arsenal screenshot: Hornet Strike,
+Primed Convulsion, Barrel Diffusion, Magnetic Might, Primed Pistol Gambit,
+Frostbite and an unranked Accelerated Isotope.
+
+Every stat the arsenal shows matched the calculator: fire rate 2.29, multishot
+2.2, magazine 8, critical chance 71.8%, critical damage 2.8x, status 40%,
+impact 57.6, puncture 460.8, slash 57.6, radiation 86.4 and magnetic 1,641.6.
+Reload shows as 2.3s against a computed 2.35s, which one decimal cannot tell
+apart.
+
+What this settles:
+
+- Summed bonuses, base damage, elemental share of base damage, and the plain
+  stats are right for a single-pellet semi-auto gun.
+- Cold and electricity from two mods combined into magnetic and merged with a
+  magnetic mod's own bonus, while a radiation mod stayed separate.
+- The arsenal's per-type rows are per projectile. Its Total row, 5,068.8, is the
+  per-type sum (2,304.0) times multishot (2.2).
+
+Still not checked in game: physical bonuses, an innate element, leftover single
+elements, magazine and reload bonuses, and any multi-pellet weapon.
 
 ## Cross-check against Overframe (2026-10-05)
 
