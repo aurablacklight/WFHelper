@@ -62,8 +62,21 @@ Critical Delay and Thermite Rounds, with Stabilizer and Primary Merciless.
 - The arsenal lists a separate Radial Attack section for this weapon, which the
   weapon data here does not contain.
 
-Still not checked in game: physical bonuses, leftover single elements, magazine
-bonuses, and any multi-pellet weapon.
+Pyrana Prime, saved config A, from a third screenshot: Barrel Diffusion, Sure
+Shot, Convulsion, Augur Pact, Heated Charge, No Return and Gunslinger.
+
+- Every stat matched with no change to the code: fire rate 6.88, multishot 22,
+  magazine 12, reload 1.6s, critical chance 24%, critical damage 2.2x, status
+  6.8%, radiation 82.1, slash 38.3, puncture 6.9, impact 3.6 and the Total row
+  2,881.2 (130.96 × 22).
+- For a multi-pellet weapon the arsenal heads the section "Damage / Projectile"
+  and labels status "Status / Projectile". So `damagePerShot` and the top-level
+  `procChance` are the per-pellet values the arsenal shows, and both open
+  questions about multi-pellet weapons are closed.
+- This also confirms a physical bonus (No Return) scaling its own type only.
+
+Still not checked in game: a leftover single element next to a combined one on
+a weapon without an innate element, and magazine or reload bonuses.
 
 ## Cross-check against Overframe (2026-10-05)
 
