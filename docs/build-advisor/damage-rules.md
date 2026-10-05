@@ -23,6 +23,27 @@ arsenal numbers yet; that is the next step. Run
 `node scripts/dev/advise-gun-build.cjs <inventory.json> "<weapon name>"` after
 `pnpm run build:main` and compare each saved config with the arsenal.
 
+## Cross-check against Overframe (2026-10-05)
+
+Two public Overframe builds were fed through `evaluateGunConfig` with the same
+mods at the same ranks. This shows agreement with another calculator, not with
+the game.
+
+| Build                                   | Result                                                                                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Lex Prime, overframe.gg/build/983       | Every number matches: damage by type, crit, multishot, fire rate, status, burst DPS 19,136.8 and sustained DPS 11,871.6.                               |
+| Trumna Prime, overframe.gg/build/785990 | Impact, crit, multishot, fire rate and status match; heat is 310.8 against 310.9. DPS is lower here (42,451 against 68,051) for the two reasons below. |
+
+- Overframe adds a radial heat attack to Trumna Prime's primary fire that
+  `ExportWeapons.damagePerShot` does not contain. Weapons with a radial part are
+  understated here until that damage is read from somewhere.
+- Overframe counts the Vigilante set bonus. Set bonuses are not modelled, and
+  `@wfcd/items` does not list them as a stat line, so they are not reported as
+  left out either.
+
+Element combining was not exercised by either build; it rests on the wiki rules
+and the unit tests.
+
 ## What is calculated
 
 For one gun and a list of mods in slot order:
@@ -65,9 +86,11 @@ The build search ranks by burst damage per second.
   formula includes multishot.
 - Whether the arsenal's status chance for multi-pellet weapons is the top-level
   `procChance` (per pellet) or the per-shot value in `behaviours`.
-- Whether mod families are caught well enough. A mod and its Flawed, Primed or
-  Galvanized form are treated as exclusive when their data paths share a stem;
-  a pair named differently would be recommended together.
+- Whether mod families are caught well enough. A mod and its Flawed, Primed,
+  Galvanized or Amalgam form are treated as exclusive when their data paths
+  share a stem or their names differ only by that prefix; a pair linked neither
+  way would be recommended together. A sweep of one real inventory (50 guns)
+  found no such pair after the Amalgam case was fixed.
 
 ## Mod text
 
