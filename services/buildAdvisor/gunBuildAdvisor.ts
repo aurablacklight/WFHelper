@@ -23,7 +23,8 @@ import type {
 } from "../../config/shared/buildAdvisorTypes";
 import { computeGunStats } from "./gunStats";
 import { parseArcaneRank } from "./arcaneEffects";
-import { versusFaction } from "./factions";
+
+import { targetDps } from "./statusModel";
 import { parseModDescription, parseModStats } from "./modEffects";
 
 /** The @wfcd/items mod fields the advisor reads. */
@@ -449,7 +450,7 @@ export function evaluateGunConfig(
     arcane: equippedArcane,
     unrecognised,
     stats,
-    versus: options.faction ? versusFaction(stats, options.faction) : null,
+    versus: options.faction ? targetDps(stats, options.faction) : null,
   };
 }
 
@@ -484,7 +485,7 @@ export function adviseGunBuild(
   let arcane: (RankedMod & { type: string }) | null = null;
   const faction = options.faction ?? null;
   const score = faction
-    ? (stats: GunStats): number => versusFaction(stats, faction).burstDps
+    ? (stats: GunStats): number => targetDps(stats, faction).burstDps
     : undefined;
   const valueOf = (stats: GunStats): number => (score ? score(stats) : stats.burstDps);
   let build = findBestGunBuild(base, candidates, undefined, [], score);
@@ -533,7 +534,7 @@ export function adviseGunBuild(
         }
       : null,
     stats: build.stats,
-    versus: faction ? versusFaction(build.stats, faction) : null,
+    versus: faction ? targetDps(build.stats, faction) : null,
     unmodded: computeGunStats(base, []),
   };
 }

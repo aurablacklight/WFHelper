@@ -99,6 +99,28 @@ describe("findBestGunBuild", () => {
     expect(build.mods.map((m) => m.id).indexOf("heat")).toBe(2);
   });
 
+  it("trades two picks for a pair of elements when one alone would make things worse", () => {
+    const element = (damageType: "heat" | "cold" | "toxin", value: number): ModEffect[] => [
+      { stat: "typedDamage", damageType, value },
+    ];
+    const candidates = [
+      mod("heatA", element("heat", 1)),
+      mod("heatB", element("heat", 0.9)),
+      mod("cold", element("cold", 0.6)),
+      mod("toxin", element("toxin", 0.6)),
+    ];
+    // Viral triples the build; blast and gas are worth nothing extra. Two slots
+    // fill with heat first, and swapping in cold or toxin alone only makes blast
+    // or gas, so the pair has to come in together.
+    const score = (stats: GunStats): number =>
+      stats.totalDamage * ((stats.damage.viral ?? 0) > 0 ? 3 : 1);
+
+    const build = findBestGunBuild(gun, candidates, 2, [], score);
+
+    expect(ids(build.mods)).toEqual(["cold", "toxin"]);
+    expect(build.stats.damage.viral).toBeCloseTo(120, 6);
+  });
+
   it("swaps out an early pick when a pair of later ones is stronger together", () => {
     const build = findBestGunBuild(
       gun,

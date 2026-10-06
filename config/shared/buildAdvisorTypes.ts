@@ -50,6 +50,10 @@ export interface GunBaseStats {
 
 export interface GunStats extends GunBaseStats {
   totalDamage: number;
+  /** Base damage a projectile after base damage mods only; status ticks scale from it. */
+  moddedBaseDamage: number;
+  /** Summed mod bonus per element, which boosts that element's own status ticks. */
+  elementBonus: DamageByType;
   /** Average damage per second while firing, crits averaged in. */
   burstDps: number;
   /** Burst damage per second spread over a full magazine and its reload. */
@@ -155,6 +159,14 @@ export type AdvisorFaction = (typeof ADVISOR_FACTIONS)[number];
 /** Damage per second after the faction's weaknesses and resistances. */
 export interface FactionDps {
   faction: AdvisorFaction;
+  /** Direct hits plus status damage, while firing. */
   burstDps: number;
   sustainedDps: number;
+  directDps: number;
+  /** Bleed, burn, poison and other damage over time. */
+  statusDps: number;
+  /** Average multiplier on health damage from the Viral stacks kept up. */
+  viralMultiplier: number;
+  /** Share of damage that gets through armour, after Corrosive and Heat strip. */
+  armourMultiplier: number;
 }

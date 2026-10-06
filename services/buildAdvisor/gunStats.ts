@@ -30,7 +30,13 @@ function add(damage: DamageByType, type: DamageType, amount: number): void {
   if (amount > 0) damage[type] = (damage[type] ?? 0) + amount;
 }
 
-function moddedDamage(base: DamageByType, mods: readonly (readonly ModEffect[])[]): DamageByType {
+interface ModdedDamage {
+  damage: DamageByType;
+  baseTotal: number;
+  elementBonus: DamageByType;
+}
+
+function moddedDamage(base: DamageByType, mods: readonly (readonly ModEffect[])[]): ModdedDamage {
   let baseBonus = 0;
   const typedBonus: DamageByType = {};
   // Insertion order is slot order: an element sits where its first mod does.
@@ -74,7 +80,12 @@ function moddedDamage(base: DamageByType, mods: readonly (readonly ModEffect[])[
     if (second && combined) add(damage, combined, firstAmount + second[1]);
     else add(damage, first, firstAmount);
   }
-  return damage;
+  const bonuses: DamageByType = {};
+  for (const [element, bonus] of elementBonus) bonuses[element] = bonus;
+  for (const [type, bonus] of Object.entries(typedBonus) as [DamageType, number][]) {
+    if (!PHYSICAL.has(type)) bonuses[type] = bonus;
+  }
+  return { damage, baseTotal, elementBonus: bonuses };
 }
 
 export function computeGunStats(
@@ -101,7 +112,7 @@ export function computeGunStats(
   if (fireRateLocked) bonus.fireRate = 0;
   const scaled = (value: number, by: number): number => value * Math.max(0, 1 + by);
 
-  const damage = moddedDamage(base.damage, mods);
+  const { damage, baseTotal, elementBonus } = moddedDamage(base.damage, mods);
   let totalDamage = 0;
   for (const amount of Object.values(damage)) totalDamage += amount ?? 0;
 
@@ -121,6 +132,8 @@ export function computeGunStats(
   return {
     damage,
     totalDamage,
+    moddedBaseDamage: baseTotal,
+    elementBonus,
     multishot,
     criticalChance,
     criticalMultiplier,

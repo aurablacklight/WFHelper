@@ -1,24 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ADVISOR_FACTIONS, type GunStats } from "../../config/shared/buildAdvisorTypes";
-import {
-  factionDamageMultiplier,
-  factionModifiers,
-  versusFaction,
-} from "../../services/buildAdvisor/factions";
-
-const stats = (damage: GunStats["damage"], burstDps: number, sustainedDps: number): GunStats => ({
-  damage,
-  totalDamage: Object.values(damage).reduce((sum, amount) => sum + (amount ?? 0), 0),
-  multishot: 1,
-  criticalChance: 0,
-  criticalMultiplier: 2,
-  statusChance: 0,
-  fireRate: 1,
-  magazineSize: 10,
-  reloadTime: 1,
-  burstDps,
-  sustainedDps,
-});
+import { ADVISOR_FACTIONS } from "../../config/shared/buildAdvisorTypes";
+import { factionDamageMultiplier, factionModifiers } from "../../services/buildAdvisor/factions";
 
 describe("faction damage modifiers", () => {
   // Rows from the wiki's Damage overview table, read 2026-10-05.
@@ -52,12 +34,5 @@ describe("factionDamageMultiplier", () => {
 
   it("is neutral for a hit with no damage", () => {
     expect(factionDamageMultiplier({}, "grineer")).toBe(1);
-  });
-});
-
-describe("versusFaction", () => {
-  it("scales burst and sustained damage per second by the hit's multiplier", () => {
-    const result = versusFaction(stats({ viral: 100 }, 1000, 800), "murmur");
-    expect(result).toEqual({ faction: "murmur", burstDps: 500, sustainedDps: 400 });
   });
 });

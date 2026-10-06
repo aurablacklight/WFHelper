@@ -349,9 +349,23 @@ describe("ranking against a faction", () => {
     if (!advice.ok) throw new Error(advice.reason);
     // Impact 10, innate heat 30, and cold with toxin as 48 viral: 88 a hit.
     expect(advice.stats.totalDamage).toBeCloseTo(88, 6);
-    // Viral is worth half again to Corrupted: 112 of 88.
-    expect(advice.versus?.faction).toBe("corrupted");
-    expect(advice.versus?.burstDps).toBeCloseTo((advice.stats.burstDps * 112) / 88, 6);
+    // Corrupted are armoured and weak to viral; the 48 viral a hit also keeps
+    // Viral stacks up. The model's own numbers are tested in statusModel.
+    const versus = advice.versus;
+    expect(versus?.faction).toBe("corrupted");
+    // Capped armour lets 10% through; the innate heat keeps a burn up most of
+    // the time, which lifts that towards the 36.4% of halved armour.
+    expect(versus?.armourMultiplier).toBeGreaterThan(0.3);
+    expect(versus?.armourMultiplier).toBeLessThan(0.3637);
+    expect(versus?.viralMultiplier).toBeGreaterThan(1);
+    // 112 of 88 for the type weakness, then Viral and armour.
+    expect(versus?.directDps).toBeCloseTo(
+      ((advice.stats.burstDps * 112) / 88) *
+        (versus?.viralMultiplier ?? 0) *
+        (versus?.armourMultiplier ?? 0),
+      6,
+    );
+    expect(versus?.burstDps).toBeCloseTo((versus?.directDps ?? 0) + (versus?.statusDps ?? 0), 6);
   });
 
   it("leaves the element a faction is weak to uncombined", () => {
@@ -389,10 +403,15 @@ describe("ranking against a faction", () => {
       LongGuns: [{ ItemId: id(100), ItemType: RIFLE, Configs: [{ Upgrades: [COLD, TOXIN] }] }],
     });
     const review = reviewGun(owned, RIFLE, data, { assumeConditionals: true, faction: "murmur" });
-    // The Murmur resist viral: 48 at half value, 40 at face value, of 88.
+    // The Murmur have no armour in the model and resist viral: 48 at half value
+    // and 40 at face value, of 88. Viral stacks still multiply what lands.
     const config = review.configs[0];
     expect(config.versus?.faction).toBe("murmur");
-    expect(config.versus?.burstDps).toBeCloseTo((config.stats.burstDps * 64) / 88, 6);
+    expect(config.versus?.armourMultiplier).toBe(1);
+    expect(config.versus?.directDps).toBeCloseTo(
+      ((config.stats.burstDps * 64) / 88) * (config.versus?.viralMultiplier ?? 0),
+      6,
+    );
   });
 });
 

@@ -1,14 +1,11 @@
 // What each damage type is worth against a faction. Since Update 36 the game
 // multiplies a type by 1.5 or 0.5 by faction alone, whatever the enemy's health,
-// shields or armour. Armour is left out: it scales every type alike, so it does
-// not change which build ranks first.
+// shields or armour. Armour and status effects are in statusModel.
 
 import type {
   AdvisorFaction,
   DamageByType,
   DamageType,
-  FactionDps,
-  GunStats,
 } from "../../config/shared/buildAdvisorTypes";
 
 const WEAK = 1.5;
@@ -59,13 +56,4 @@ export function factionDamageMultiplier(damage: DamageByType, faction: AdvisorFa
     weighted += amount * (modifiers[type] ?? 1);
   }
   return total > 0 ? weighted / total : 1;
-}
-
-export function versusFaction(stats: GunStats, faction: AdvisorFaction): FactionDps {
-  const multiplier = factionDamageMultiplier(stats.damage, faction);
-  return {
-    faction,
-    burstDps: stats.burstDps * multiplier,
-    sustainedDps: stats.sustainedDps * multiplier,
-  };
 }

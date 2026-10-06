@@ -104,6 +104,28 @@ page:
   scales every type alike, so it does not change this ranking), shields,
   Overguard, every status effect, sub-factions and per-enemy exceptions. Until
   statuses exist, Viral and Slash builds are undervalued against armour.
+- Done after the research: a status and armour model
+  (`services/buildAdvisor/statusModel.ts`), which supersedes the "not modelled
+  yet" list in the item above. With a target chosen the ranking is estimated
+  damage per second to one heavy unit under sustained fire:
+  - Procs a second are fire rate × multishot × status chance, shared between
+    damage types by their share of the hit.
+  - Viral stacks multiply damage to health (2 + 0.25 a stack past the first, to
+    4.25 at ten); the average over the stacks a proc rate keeps up is used.
+  - Grineer, Corrupted, Scaldra, Techrot and Anarchs targets have 2,700 armour
+    (90% reduction). Corrosive stacks strip 26% to 80% and an active Heat proc
+    halves what is left. Other factions are treated as unarmoured.
+  - Slash, Heat, Toxin, Electricity and Gas procs deal six ticks of 35% or 50%
+    of modded base damage, times the hit's average crit; a matching single
+    element mod boosts its own proc; Slash ignores armour and faction.
+  - The rules are the wiki's. Combining them (random arrivals, independent
+    effects, steady state) is this project's own model and is **not validated
+    in game**. Known simplifications: no ramp-up time, so it flatters status
+    builds against enemies that die fast; a refreshed Heat burn is counted as
+    six ticks a proc, which understates it; no shields, Overguard, status
+    immunity, light units, sub-factions or Bane mods.
+  - The search now also trades two mods for two elemental mods at once, since
+    bringing in Viral one mod at a time passes through Blast or Gas.
 - The bundled `@wfcd/items` text writes a line break inside a stat line as a
   literal backslash and n, not a newline. The parser accepts both.
 

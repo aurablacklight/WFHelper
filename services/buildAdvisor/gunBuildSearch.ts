@@ -141,9 +141,36 @@ export function findBestGunBuild<T extends BuildCandidate>(
     return false;
   };
 
+  // Bringing in a second element one mod at a time can pass through a worse
+  // combination (heat with cold is blast before toxin makes it viral and heat),
+  // so two chosen mods are also traded for two elemental ones at once.
+  const swapPair = (): boolean => {
+    if (!score) return false;
+    const elemental = candidates.filter((c) => primaryElement(c) !== null);
+    for (let i = 0; i < chosen.length; i++) {
+      for (let j = i + 1; j < chosen.length; j++) {
+        const rest = chosen.filter((_, index) => index !== i && index !== j);
+        for (let a = 0; a < elemental.length; a++) {
+          if (!fits(elemental[a], rest)) continue;
+          for (let b = a + 1; b < elemental.length; b++) {
+            if (!fits(elemental[b], [...rest, elemental[a]])) continue;
+            const next = [...rest, elemental[a], elemental[b]];
+            const value = valueOf(next);
+            if (value > best + MIN_GAIN) {
+              best = value;
+              chosen = next;
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  };
+
   // A swap can free a family, so fill again after each one.
   do fill();
-  while (swapOne());
+  while (swapOne() || swapPair());
 
   const arranged = arrange(chosen);
   return { mods: arranged.mods, stats: arranged.stats };
