@@ -112,6 +112,15 @@
   });
 
   const advice = $derived(review?.advice.ok ? review.advice : null);
+  // The arcane leads the list: it decides what the mods beside it are worth.
+  const recommended = $derived(
+    advice
+      ? [
+          ...(advice.arcane ? [{ ...advice.arcane, isArcane: true }] : []),
+          ...advice.mods.map((mod) => ({ ...mod, isArcane: false })),
+        ]
+      : [],
+  );
 
   const columns = $derived.by((): StatColumn[] => {
     if (!review || !advice) return [];
@@ -318,14 +327,15 @@
               <span class="text-xs text-text-muted">{$tr("builds.recommendedTitle")}</span>
             </div>
 
-            {#if advice.mods.length === 0}
+            {#if recommended.length === 0}
               <p class="m-0 text-xs text-text-muted">{$tr("builds.noMods")}</p>
             {:else}
               <ul class="m-0 grid list-none grid-cols-1 gap-2 p-0 xl:grid-cols-2">
-                {#each advice.mods as mod (mod.type)}
+                {#each recommended as mod (mod.type)}
                   <li
                     class="flex items-start gap-2 border-t border-[color:var(--ui-panel-border)] pt-2"
                     data-builds-mod={mod.type}
+                    data-builds-arcane={mod.isArcane ? "" : undefined}
                   >
                     <span class="h-9 w-9 shrink-0 overflow-hidden">
                       <ItemImage
@@ -340,6 +350,11 @@
                         <span class="truncate font-semibold text-text-secondary" title={mod.name}>
                           {db[mod.type]?.displayName ?? mod.name}
                         </span>
+                        {#if mod.isArcane}
+                          <span class="whitespace-nowrap text-accent"
+                            >{$tr("inventory.tab.arcanes")}</span
+                          >
+                        {/if}
                         <span class="whitespace-nowrap text-text-muted">
                           {$tr("rivens.detail.rank", {
                             current: String(mod.rank),

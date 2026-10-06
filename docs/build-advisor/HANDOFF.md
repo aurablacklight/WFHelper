@@ -84,6 +84,15 @@ page:
   against the arsenal without stacks. Not covered: the Galvanized Aptitude,
   Savvy and Shot "damage per status type" bonus, which needs a status model,
   and anything whose text does not match the pattern in full.
+- Done after the research: the six damage arcanes (Primary and Secondary
+  Merciless, Deadhead and Dexterity). They are read from `ExportArcanes`, whose
+  bonuses are structured, so no text is parsed. The advisor runs one search per
+  owned arcane and keeps the strongest whole build, because +360% damage in the
+  base damage bucket changes which mods are worth a slot. A saved config's
+  arcane (stored at index 9) is read too; Primary Merciless's +30% reload speed
+  closes the Trumna Prime reload gap (3.08s computed, 3.1s in the arsenal). Not
+  checked: whether the weapon has an arcane adapter fitted. Every other arcane is
+  still listed as unrecognised.
 - The bundled `@wfcd/items` text writes a line break inside a stat line as a
   literal backslash and n, not a newline. The parser accepts both.
 

@@ -21,13 +21,6 @@ const GUN_MOD_SLOTS = 8;
 // Float noise must not count as an improvement, or the swap loop never settles.
 const MIN_GAIN = 1e-9;
 
-function burstDps(base: GunBaseStats, mods: readonly BuildCandidate[]): number {
-  return computeGunStats(
-    base,
-    mods.map((m) => m.effects),
-  ).burstDps;
-}
-
 function fits(candidate: BuildCandidate, chosen: readonly BuildCandidate[]): boolean {
   return chosen.every((m) => m.id !== candidate.id && m.family !== candidate.family);
 }
@@ -36,16 +29,22 @@ export function findBestGunBuild<T extends BuildCandidate>(
   base: GunBaseStats,
   candidates: readonly T[],
   slots = GUN_MOD_SLOTS,
+  /** Bonuses that apply whatever is chosen, such as an equipped arcane. */
+  always: readonly (readonly ModEffect[])[] = [],
 ): GunBuild<T> {
+  const statsOf = (mods: readonly BuildCandidate[]): GunStats =>
+    computeGunStats(base, [...mods.map((m) => m.effects), ...always]);
+  const burstDps = (mods: readonly BuildCandidate[]): number => statsOf(mods).burstDps;
+
   let chosen: T[] = [];
-  let best = burstDps(base, chosen);
+  let best = burstDps(chosen);
 
   const fill = (): void => {
     while (chosen.length < slots) {
       let pick: T | null = null;
       for (const candidate of candidates) {
         if (!fits(candidate, chosen)) continue;
-        const dps = burstDps(base, [...chosen, candidate]);
+        const dps = burstDps([...chosen, candidate]);
         if (dps > best + MIN_GAIN) {
           best = dps;
           pick = candidate;
@@ -62,7 +61,7 @@ export function findBestGunBuild<T extends BuildCandidate>(
       for (const candidate of candidates) {
         if (!fits(candidate, rest)) continue;
         const next = [...rest.slice(0, i), candidate, ...rest.slice(i)];
-        const dps = burstDps(base, next);
+        const dps = burstDps(next);
         if (dps > best + MIN_GAIN) {
           best = dps;
           chosen = next;
@@ -77,11 +76,5 @@ export function findBestGunBuild<T extends BuildCandidate>(
   do fill();
   while (swapOne());
 
-  return {
-    mods: chosen,
-    stats: computeGunStats(
-      base,
-      chosen.map((m) => m.effects),
-    ),
-  };
+  return { mods: chosen, stats: statsOf(chosen) };
 }

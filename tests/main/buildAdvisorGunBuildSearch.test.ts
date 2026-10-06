@@ -61,6 +61,21 @@ describe("findBestGunBuild", () => {
     expect(ids(build.mods)).toEqual(["damage"]);
   });
 
+  it("values a mod against bonuses that are always on, such as an arcane", () => {
+    const candidates = [
+      mod("damage", [{ stat: "damage", value: 1.65 }]),
+      mod("multishot", [{ stat: "multishot", value: 0.9 }]),
+    ];
+    // Alone, +165% damage (2.65x) beats +90% multishot (1.9x).
+    expect(ids(findBestGunBuild(gun, candidates, 1).mods)).toEqual(["damage"]);
+
+    // Beside +360% damage the same mod adds 6.25 / 4.6 = 1.36x, so multishot wins.
+    const build = findBestGunBuild(gun, candidates, 1, [[{ stat: "damage", value: 3.6 }]]);
+    expect(ids(build.mods)).toEqual(["multishot"]);
+    // 100 * 4.6 damage * 1.9 pellets * 1.1 average crit.
+    expect(build.stats.burstDps).toBeCloseTo(961.4, 6);
+  });
+
   it("swaps out an early pick when a pair of later ones is stronger together", () => {
     const build = findBestGunBuild(
       gun,

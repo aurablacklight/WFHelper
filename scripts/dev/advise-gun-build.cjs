@@ -72,6 +72,7 @@ console.log(`${names[weapons[match.ItemType]?.name] ?? match.ItemType}\n`);
   console.log(
     `  Saved config ${String.fromCharCode(65 + index)}${config.Name ? ` "${config.Name}"` : ""}`,
   );
+  if (result.arcane) printMod(result.arcane, "  [arcane]");
   for (const mod of result.mods) printMod(mod);
   for (const type of result.unrecognised) console.log(`    not modelled: ${type}`);
   printStats(result.stats);
@@ -83,5 +84,7 @@ if (!advice.ok) {
   process.exit(1);
 }
 console.log("  Recommended from owned mods");
+if (advice.arcane)
+  printMod(advice.arcane, `  [arcane] ${percent(advice.arcane.burstDpsShare)} of burst dps`);
 for (const mod of advice.mods) printMod(mod, `  ${percent(mod.burstDpsShare)} of burst dps`);
 printStats(advice.stats);

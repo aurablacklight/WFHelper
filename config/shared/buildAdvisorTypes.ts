@@ -85,6 +85,8 @@ export type GunBuildAdvice =
       ok: true;
       weapon: { type: string; name: string };
       mods: AdvisedMod[];
+      /** The weapon arcane to equip, or null when none owned adds burst damage. */
+      arcane: AdvisedMod | null;
       stats: GunStats;
       unmodded: GunStats;
     }
@@ -96,7 +98,9 @@ export type GunConfigEvaluation =
       weapon: { type: string; name: string };
       /** In arsenal order. */
       mods: EvaluatedMod[];
-      /** Equipped things with no mod data: rivens, arcanes, unknown ids. */
+      /** The equipped weapon arcane, when it is one the calculator models. */
+      arcane: EvaluatedMod | null;
+      /** Equipped things with no usable data: rivens, other arcanes, unknown ids. */
       unrecognised: string[];
       stats: GunStats;
     }
@@ -117,6 +121,7 @@ export interface SavedGunConfig {
   index: number;
   name: string | null;
   mods: EvaluatedMod[];
+  arcane: EvaluatedMod | null;
   unrecognised: string[];
   stats: GunStats;
 }

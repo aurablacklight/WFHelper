@@ -20,6 +20,7 @@ import type {
   SavedGunConfig,
 } from "../../config/shared/buildAdvisorTypes";
 import { computeGunStats } from "./gunStats";
+import { parseArcaneRank } from "./arcaneEffects";
 import { parseModDescription, parseModStats } from "./modEffects";
 
 /** The @wfcd/items mod fields the advisor reads. */
@@ -31,6 +32,8 @@ interface AdvisorModEntry {
 }
 
 export interface AdvisorGameData {
+  /** ExportArcanes from warframe-public-export-plus. */
+  arcanes: Readonly<Record<string, unknown>>;
   /** ExportWeapons from warframe-public-export-plus. */
   weapons: Readonly<Record<string, unknown>>;
   /** ExportUpgrades from warframe-public-export-plus. */
@@ -72,6 +75,7 @@ let bundled: AdvisorGameData | null = null;
 
 function bundledGameData(): AdvisorGameData {
   bundled ??= {
+    arcanes: readPepExport("ExportArcanes") ?? {},
     weapons: readPepExport("ExportWeapons") ?? {},
     upgrades: readPepExport("ExportUpgrades") ?? {},
     mods: readWfcdItems(["Mods"]) as AdvisorModEntry[],
@@ -299,6 +303,47 @@ function modAtRank(
   };
 }
 
+// The weapon arcanes the calculator models: stacking damage that adds to the
+// same bucket as base damage mods. The wiki confirms that for Merciless; for
+// Deadhead and Dexterity it is read from the identical data tag.
+const OFFENSIVE_ARCANES = "/Lotus/Upgrades/CosmeticEnhancers/Offensive/";
+const MODELLED_ARCANES: Readonly<Record<GunCategory, readonly string[]>> = {
+  LongGuns: ["PrimaryDamageOnKill", "PrimaryDamageOnNoMelee", "PrimaryDamageOnMeleeKill"],
+  Pistols: ["SecondaryDamageOnKill", "SecondaryDamageOnNoMelee", "SecondaryDamageOnMeleeKill"],
+};
+// Where a gun config keeps its arcane; slot 8 is the exilus mod.
+const GUN_ARCANE_SLOT = 9;
+// An arcane with only a passive (stacks not assumed) adds no burst damage;
+// float noise must not make it look like a recommendation.
+const MIN_ARCANE_GAIN = 1e-9;
+
+function modelledArcanes(weapon: Record<string, unknown>): string[] {
+  const category = GUN_CATEGORIES.find((c) => c === weapon.productCategory);
+  return category ? MODELLED_ARCANES[category].map((name) => OFFENSIVE_ARCANES + name) : [];
+}
+
+function arcaneAtRank(
+  type: string,
+  rank: number,
+  data: AdvisorGameData,
+  options: AdvisorOptions,
+): RankedMod | null {
+  const arcane = asRecord(data.arcanes[type]);
+  const levels: unknown = arcane?.levelStats;
+  if (!arcane || !Array.isArray(levels) || levels.length === 0) return null;
+  const maxRank = levels.length - 1;
+  const usedRank = Math.min(rank, maxRank);
+  const parsed = parseArcaneRank(levels[usedRank], data.strings, options);
+  const name = typeof arcane.name === "string" ? data.strings[arcane.name] : undefined;
+  return {
+    name: name ?? type.slice(type.lastIndexOf("/") + 1),
+    rank: usedRank,
+    maxRank,
+    ...parsed,
+    unmodelledRule: false,
+  };
+}
+
 interface OwnedGun {
   inventory: Record<string, unknown>;
   weapon: Record<string, unknown>;
@@ -360,18 +405,29 @@ export function evaluateGunConfig(
   const byType = new Map(data.mods.map((mod) => [mod.uniqueName, mod]));
 
   const mods: EvaluatedMod[] = [];
+  let arcane: EvaluatedMod | null = null;
   const unrecognised: string[] = [];
+  const arcaneTypes = modelledArcanes(gun.weapon);
   const refs = Array.isArray(config.Upgrades) ? config.Upgrades.slice(0, 32) : [];
   refs.forEach((ref, slot) => {
     if (typeof ref !== "string" || ref === "") return;
     // A ranked mod is referenced by its inventory id, an unranked one by type.
     const owned = INVENTORY_ITEM_ID.test(ref) ? ranked.get(ref) : { type: ref, rank: 0 };
     const type = typeof owned?.type === "string" ? owned.type : null;
+    const rank = owned?.rank ?? 0;
+    if (type && slot === GUN_ARCANE_SLOT && arcaneTypes.includes(type)) {
+      const equipped = arcaneAtRank(type, rank, data, options);
+      if (equipped) {
+        arcane = { slot, type, ...equipped };
+        return;
+      }
+    }
     const known = type ? byType.get(type) : undefined;
-    const mod = known ? modAtRank(known, owned?.rank ?? 0, data, options) : null;
+    const mod = known ? modAtRank(known, rank, data, options) : null;
     if (type && mod) mods.push({ slot, type, ...mod });
     else unrecognised.push(type ?? ref);
   });
+  const equippedArcane = arcane as EvaluatedMod | null;
   // The inventory stores the eight mod slots in the reverse of the arsenal's
   // left-to-right, top-to-bottom order, and elements combine in arsenal order.
   const arsenalOrder = (slot: number): number => (slot < GUN_MOD_SLOTS ? -slot : slot);
@@ -381,11 +437,12 @@ export function evaluateGunConfig(
     ok: true,
     weapon: { type: weaponType, name: gun.name },
     mods,
+    arcane: equippedArcane,
     unrecognised,
-    stats: computeGunStats(
-      gun.base,
-      mods.map((m) => m.effects),
-    ),
+    stats: computeGunStats(gun.base, [
+      ...mods.map((m) => m.effects),
+      ...(equippedArcane ? [equippedArcane.effects] : []),
+    ]),
   };
 }
 
@@ -415,12 +472,28 @@ export function adviseGunBuild(
   }
   assignFamilies(candidates, keys);
 
-  const build = findBestGunBuild(base, candidates);
-  const without = (skip: Candidate): number =>
-    computeGunStats(
-      base,
-      build.mods.filter((m) => m !== skip).map((m) => m.effects),
-    ).burstDps;
+  // An arcane changes which mods are worth a slot, so each owned one gets its
+  // own search and the strongest whole build wins. No arcane is the baseline.
+  let arcane: (RankedMod & { type: string }) | null = null;
+  let build = findBestGunBuild(base, candidates);
+  for (const type of modelledArcanes(gun.weapon)) {
+    const rank = owned.get(type);
+    const option = rank === undefined ? null : arcaneAtRank(type, rank, data, options);
+    if (!option?.effects.length) continue;
+    const withArcane = findBestGunBuild(base, candidates, undefined, [option.effects]);
+    if (withArcane.stats.burstDps > build.stats.burstDps * (1 + MIN_ARCANE_GAIN)) {
+      build = withArcane;
+      arcane = { type, ...option };
+    }
+  }
+
+  const chosenArcane = arcane as (RankedMod & { type: string }) | null;
+  const arcaneEffects = chosenArcane ? [chosenArcane.effects] : [];
+  const total = build.stats.burstDps;
+  const share = (rest: readonly (readonly ModEffect[])[]): number =>
+    total > 0 ? (total - computeGunStats(base, rest).burstDps) / total : 0;
+  const modEffects = (skip?: Candidate): (readonly ModEffect[])[] =>
+    build.mods.filter((m) => m !== skip).map((m) => m.effects);
 
   return {
     ok: true,
@@ -433,9 +506,20 @@ export function adviseGunBuild(
       effects: m.effects,
       ignored: m.ignored,
       assumed: m.assumed,
-      burstDpsShare:
-        build.stats.burstDps > 0 ? (build.stats.burstDps - without(m)) / build.stats.burstDps : 0,
+      burstDpsShare: share([...modEffects(m), ...arcaneEffects]),
     })),
+    arcane: chosenArcane
+      ? {
+          type: chosenArcane.type,
+          name: chosenArcane.name,
+          rank: chosenArcane.rank,
+          maxRank: chosenArcane.maxRank,
+          effects: chosenArcane.effects,
+          ignored: chosenArcane.ignored,
+          assumed: chosenArcane.assumed,
+          burstDpsShare: share(modEffects()),
+        }
+      : null,
     stats: build.stats,
     unmodded: computeGunStats(base, []),
   };
@@ -498,6 +582,7 @@ export function reviewGun(
       index,
       name: typeof config?.Name === "string" && config.Name ? config.Name.slice(0, 120) : null,
       mods: evaluation.mods,
+      arcane: evaluation.arcane,
       unrecognised: evaluation.unrecognised,
       stats: evaluation.stats,
     });

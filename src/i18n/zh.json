@@ -442,7 +442,7 @@
   "builds.noMods": "你的 Mod 都无法提高这把武器的爆发 DPS。",
   "builds.share": "占爆发 DPS 的 {percent}%",
   "builds.notCounted": "未计入：{text}",
-  "builds.caveat": "未对敌人建模。赋能、裂罅 Mod、套装加成、Mod 容量和极性均未计入。",
+  "builds.caveat": "未对敌人建模。裂罅 Mod、套装加成、Mod 容量、极性以及大多数赋能均未计入。",
   "builds.stacksUp": "叠层全满",
   "builds.stacksUpHint": "按满层计算“击杀时”等条件加成。关闭后仅按军械库数值排序。",
   "builds.assumes": "视为已触发：{text}",

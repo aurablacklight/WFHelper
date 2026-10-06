@@ -20,6 +20,22 @@ const PISTOL_DAMAGE = "/Lotus/Upgrades/Mods/Pistol/WeaponDamageAmountMod";
 const PVP_DAMAGE = "/Lotus/Upgrades/Mods/PvPMods/Rifle/FixturePvPMod";
 const BEAM_ONLY = "/Lotus/Upgrades/Mods/Rifle/FixtureBeamMod";
 const DAMAGE_AMALGAM = "/Lotus/Upgrades/Mods/DualSource/Rifle/FixtureRushMod";
+const MERCILESS = "/Lotus/Upgrades/CosmeticEnhancers/Offensive/PrimaryDamageOnKill";
+const SECONDARY_MERCILESS = "/Lotus/Upgrades/CosmeticEnhancers/Offensive/SecondaryDamageOnKill";
+// Two ranks in the shape ExportArcanes ships: stacking damage on kill and a
+// passive reload speed bonus, +5% then +30% each.
+const mercilessRanks = [5, 30].map((percent) => [
+  {
+    tag: "/Lotus/Language/Upgrades/CosmeticEnhancerDescriptionNoChanceWithDurationAndStacks",
+    sub: {
+      CONDITION: "/Lotus/Language/Upgrades/OnKillCondition_Description",
+      BONUS: { tag: "/Lotus/Language/Upgrades/WeaponDamageModDesc", sub: { val: `+${percent}` } },
+      DURATION: "4",
+      STACKS: "12",
+    },
+  },
+  { tag: "/Lotus/Language/Upgrades/WeaponReloadSpeedModDesc", sub: { val: `+${percent}` } },
+]);
 const CRIT = "/Lotus/Upgrades/Mods/Rifle/WeaponCritChanceMod";
 const CRIT_CORRUPTED = "/Lotus/Upgrades/Mods/Rifle/DualStat/CorruptedCritRateFireRateRifle";
 const HEAT = "/Lotus/Upgrades/Mods/Rifle/FixtureHeatMod";
@@ -53,6 +69,13 @@ const weapon = (extra: Record<string, unknown> = {}) => ({
 const ranks = (...percents: number[]) => percents.map((p) => ({ stats: [`+${p}% Damage`] }));
 
 const data: AdvisorGameData = {
+  arcanes: {
+    [MERCILESS]: { name: "/Lotus/Language/Fixture/MercilessName", levelStats: mercilessRanks },
+    [SECONDARY_MERCILESS]: {
+      name: "/Lotus/Language/Fixture/SecondaryMercilessName",
+      levelStats: mercilessRanks,
+    },
+  },
   weapons: {
     [RIFLE]: weapon(),
     [BOW]: weapon({
@@ -156,6 +179,8 @@ const data: AdvisorGameData = {
   strings: {
     "/Lotus/Language/Fixture/RifleName": "Fixture Rifle",
     "/Lotus/Language/Fixture/BowName": "Fixture Bow",
+    "/Lotus/Language/Fixture/MercilessName": "Fixture Merciless",
+    "/Lotus/Language/Fixture/SecondaryMercilessName": "Fixture Secondary Merciless",
     "/Lotus/Language/Fixture/CannonadeDesc":
       "Only compatible with Semi-Auto Trigger. Fire Rate cannot be modified.",
     "/Lotus/Language/Fixture/ConditionalDesc": "Damage is halved while airborne.",
@@ -306,6 +331,69 @@ describe("evaluateGunConfig", () => {
       ok: false,
       reason: "no-such-config",
     });
+  });
+});
+
+describe("weapon arcanes", () => {
+  const withArcane = (arcane: string, rank = 1) =>
+    inventory({
+      Upgrades: [ranked(2, DAMAGE, 2), ranked(3, MULTISHOT_GALVANIZED, 0), ranked(9, arcane, rank)],
+    });
+
+  it("recommends an owned arcane and values the mods beside it", () => {
+    const advice = adviseGunBuild(withArcane(MERCILESS), RIFLE, data);
+    if (!advice.ok) throw new Error(advice.reason);
+
+    expect(advice.arcane).toMatchObject({ type: MERCILESS, name: "Fixture Merciless", rank: 1 });
+    expect(advice.arcane?.maxRank).toBe(1);
+    // Base 40 with +150% from the mod and 12 x +30% from the arcane: 40 * 6.1.
+    expect(advice.stats.totalDamage).toBeCloseTo(244, 6);
+    // The passive: 2s at +30% reload speed.
+    expect(advice.stats.reloadTime).toBeCloseTo(2 / 1.3, 6);
+
+    // The damage mod is now worth 1.5 of 6.1, not 1.5 of 2.5.
+    const serration = advice.mods.find((m) => m.type === DAMAGE);
+    expect(serration?.burstDpsShare).toBeCloseTo(60 / 244, 6);
+    // Without the arcane the same mods deal 100 a projectile.
+    expect(advice.arcane?.burstDpsShare).toBeCloseTo(144 / 244, 6);
+  });
+
+  it("does not offer a secondary arcane to a primary", () => {
+    const advice = adviseGunBuild(withArcane(SECONDARY_MERCILESS), RIFLE, data);
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.arcane).toBeNull();
+    expect(advice.stats.totalDamage).toBeCloseTo(100, 6);
+  });
+
+  it("recommends no arcane when its only burst bonus needs stacks", () => {
+    const advice = adviseGunBuild(withArcane(MERCILESS), RIFLE, data, {
+      assumeConditionals: false,
+    });
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.arcane).toBeNull();
+  });
+
+  it("uses the lower rank's values for a lower rank arcane", () => {
+    const advice = adviseGunBuild(withArcane(MERCILESS, 0), RIFLE, data);
+    if (!advice.ok) throw new Error(advice.reason);
+    // 12 x +5% beside +150%: 40 * 3.1.
+    expect(advice.stats.totalDamage).toBeCloseTo(124, 6);
+  });
+
+  it("reads the arcane equipped on a saved config and applies its passive", () => {
+    const refs = ["", "", "", "", "", "", "", "", "", id(9).$oid];
+    const owned = inventory({
+      LongGuns: [{ ItemId: id(100), ItemType: RIFLE, Configs: [{ Upgrades: refs }] }],
+      Upgrades: [ranked(9, MERCILESS, 1)],
+    });
+    const result = evaluateGunConfig(owned, RIFLE, 0, data);
+    if (!result.ok) throw new Error(result.reason);
+
+    expect(result.arcane).toMatchObject({ type: MERCILESS, name: "Fixture Merciless", slot: 9 });
+    expect(result.unrecognised).toEqual([]);
+    // Arsenal numbers: the stacks are not counted, the reload passive is.
+    expect(result.stats.totalDamage).toBeCloseTo(40, 6);
+    expect(result.stats.reloadTime).toBeCloseTo(2 / 1.3, 6);
   });
 });
 
