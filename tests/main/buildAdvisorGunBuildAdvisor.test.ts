@@ -11,6 +11,8 @@ const RIFLE = "/Lotus/Weapons/Fixture/Rifle/FixtureRifle";
 const RIFLE_BASE = "/Lotus/Weapons/Fixture/Rifle/LotusFixtureRifle";
 const PISTOL_BASE = "/Lotus/Weapons/Fixture/Pistol/LotusFixturePistol";
 const BOW = "/Lotus/Weapons/Fixture/Bows/FixtureBow";
+// In the weapon table, but without a fire rate the calculator can use.
+const BROKEN = "/Lotus/Weapons/Fixture/Rifle/FixtureBroken";
 
 const DAMAGE = "/Lotus/Upgrades/Mods/Rifle/WeaponDamageAmountMod";
 const DAMAGE_FLAWED = "/Lotus/Upgrades/Mods/Rifle/Beginner/WeaponDamageAmountModBeginner";
@@ -69,6 +71,7 @@ const weapon = (extra: Record<string, unknown> = {}) => ({
 const ranks = (...percents: number[]) => percents.map((p) => ({ stats: [`+${p}% Damage`] }));
 
 const data: AdvisorGameData = {
+  wfcdGuns: {},
   polarities: {},
   rivens: { owned: () => [], family: (name) => name, disposition: () => 1 },
   arcanes: {
@@ -85,6 +88,7 @@ const data: AdvisorGameData = {
       holsterCategory: "BOW",
       trigger: "CHARGE",
     }),
+    [BROKEN]: weapon({ name: "/Lotus/Language/Fixture/BrokenName", fireRate: 0 }),
   },
   upgrades: {
     [DAMAGE]: { compat: RIFLE_BASE, baseDrain: 18, polarity: "AP_ATTACK" },
@@ -181,6 +185,7 @@ const data: AdvisorGameData = {
   strings: {
     "/Lotus/Language/Fixture/RifleName": "Fixture Rifle",
     "/Lotus/Language/Fixture/BowName": "Fixture Bow",
+    "/Lotus/Language/Fixture/BrokenName": "Fixture Broken",
     "/Lotus/Language/Fixture/MercilessName": "Fixture Merciless",
     "/Lotus/Language/Fixture/SecondaryMercilessName": "Fixture Secondary Merciless",
     "/Lotus/Language/Fixture/CannonadeDesc":
@@ -199,7 +204,7 @@ const ranked = (n: number, ItemType: string, lvl?: number) => ({
 const inventory = (extra: Record<string, unknown> = {}) => ({
   LongGuns: [
     { ItemId: id(100), ItemType: RIFLE },
-    { ItemId: id(101), ItemType: BOW },
+    { ItemId: id(101), ItemType: BROKEN },
   ],
   Upgrades: [
     ranked(1, DAMAGE, 1),
@@ -225,7 +230,12 @@ describe("listOwnedGuns", () => {
       Melee: [{ ItemId: id(103), ItemType: "/Lotus/Weapons/Fixture/Sword" }],
     });
     expect(listOwnedGuns(owned, data)).toEqual([
-      { type: BOW, name: "Fixture Bow", category: "LongGuns", unsupported: "unsupported-weapon" },
+      {
+        type: BROKEN,
+        name: "Fixture Broken",
+        category: "LongGuns",
+        unsupported: "unsupported-weapon",
+      },
       { type: RIFLE, name: "Fixture Rifle", category: "LongGuns", unsupported: null },
       { type: unknown, name: "Unknown", category: "Pistols", unsupported: "unknown-weapon" },
     ]);
@@ -271,7 +281,7 @@ describe("reviewGun", () => {
   });
 
   it("returns no configs with the refusal for a weapon it cannot build for", () => {
-    expect(reviewGun(inventory(), BOW, data)).toEqual({
+    expect(reviewGun(inventory(), BROKEN, data)).toEqual({
       advice: { ok: false, reason: "unsupported-weapon" },
       configs: [],
     });
@@ -332,6 +342,135 @@ describe("evaluateGunConfig", () => {
     expect(evaluateGunConfig(withConfigs([]), RIFLE, 5, data)).toEqual({
       ok: false,
       reason: "no-such-config",
+    });
+  });
+});
+
+describe("weapons beyond auto and semi-auto", () => {
+  const owning = (weaponType: string, ...mods: string[]) =>
+    inventory({
+      LongGuns: [{ ItemId: id(100), ItemType: weaponType }],
+      Upgrades: [],
+      RawUpgrades: mods.map((ItemType) => ({ ItemType, ItemCount: 1 })),
+    });
+
+  it("gives exact figures for auto and semi-auto triggers", () => {
+    const advice = adviseGunBuild(owning(RIFLE), RIFLE, data);
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.approximate).toBe(false);
+  });
+
+  it("builds for a burst weapon and says the figures are approximate", () => {
+    const burst = { ...data, weapons: { ...data.weapons, [RIFLE]: weapon({ trigger: "BURST" }) } };
+    const advice = adviseGunBuild(owning(RIFLE, DAMAGE), RIFLE, burst);
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.approximate).toBe(true);
+    expect(advice.mods.map((m) => m.name)).toEqual(["Fixture Serration"]);
+  });
+
+  it("doubles fire rate bonuses on a bow", () => {
+    const advice = adviseGunBuild(owning(BOW, FIRE_RATE), BOW, data);
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.approximate).toBe(true);
+    // +60% counts as +120%: 5 shots a second becomes 11.
+    expect(advice.stats.fireRate).toBeCloseTo(11, 6);
+  });
+});
+
+describe("radial attacks the weapon table leaves out", () => {
+  const owned = inventory({ Upgrades: [], RawUpgrades: [] });
+  const unmodded = (wfcdGuns: AdvisorGameData["wfcdGuns"]) => {
+    const advice = adviseGunBuild(owned, RIFLE, { ...data, wfcdGuns });
+    if (!advice.ok) throw new Error(advice.reason);
+    return advice.unmodded;
+  };
+
+  it("adds a radial attack listed beside a direct hit that matches the table's total", () => {
+    // The table says 10 impact and 30 heat, which is the direct hit alone.
+    const stats = unmodded({
+      [RIFLE]: {
+        attacks: [
+          { name: "Auto", speed: 5, damage: { impact: 10, heat: 30 } },
+          { name: "Auto AoE", speed: 5, shot_type: "AoE", damage: { heat: 20 } },
+        ],
+      },
+    });
+    expect(stats.damage.heat).toBeCloseTo(50, 6);
+    expect(stats.totalDamage).toBeCloseTo(60, 6);
+  });
+
+  it("adds nothing when the table's total already covers the explosion", () => {
+    // Direct 10 and radial 30 are the 40 the table lists.
+    const stats = unmodded({
+      [RIFLE]: {
+        attacks: [
+          { name: "Rocket Impact", speed: 5, damage: { impact: 10 } },
+          { name: "Rocket Explosion", speed: 5, shot_type: "AoE", damage: { heat: 30 } },
+        ],
+      },
+    });
+    expect(stats.totalDamage).toBeCloseTo(40, 6);
+  });
+
+  it("ignores a radial attack that belongs to another fire mode", () => {
+    const stats = unmodded({
+      [RIFLE]: {
+        attacks: [
+          { name: "Auto", speed: 5, damage: { impact: 10, heat: 30 } },
+          { name: "Grenade AoE", speed: 1.3, shot_type: "AoE", damage: { heat: 1150 } },
+        ],
+      },
+    });
+    expect(stats.totalDamage).toBeCloseTo(40, 6);
+  });
+});
+
+describe("weapons missing from the weapon table", () => {
+  const SIDEARM = "/Lotus/Weapons/Fixture/Pistols/FixtureSidearm";
+  const GENERIC_PISTOL = "/Lotus/Weapons/Tenno/Pistol/LotusPistol";
+  const withSidearm: AdvisorGameData = {
+    ...data,
+    upgrades: { ...data.upgrades, [PISTOL_DAMAGE]: { compat: GENERIC_PISTOL } },
+    wfcdGuns: {
+      [SIDEARM]: {
+        name: "Fixture Sidearm",
+        productCategory: "Pistols",
+        type: "Pistol",
+        trigger: "Semi",
+        fireRate: 4,
+        multishot: 1,
+        magazineSize: 8,
+        reloadTime: 2,
+        criticalChance: 0.2,
+        criticalMultiplier: 2,
+        procChance: 0.2,
+        damage: { total: 100, puncture: 70, cold: 30, heat: 0 },
+      },
+    },
+  };
+  const owned = inventory({
+    Pistols: [{ ItemId: id(102), ItemType: SIDEARM }],
+    Upgrades: [],
+    RawUpgrades: [{ ItemType: PISTOL_DAMAGE, ItemCount: 1 }],
+  });
+
+  it("builds from the second data package's stats", () => {
+    const advice = adviseGunBuild(owned, SIDEARM, withSidearm);
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.weapon.name).toBe("Fixture Sidearm");
+    expect(advice.approximate).toBe(false);
+    expect(advice.mods.map((m) => m.name)).toEqual(["Fixture Hornet"]);
+    // Puncture 70 with +220%.
+    expect(advice.stats.damage.puncture).toBeCloseTo(224, 6);
+  });
+
+  it("lists it as supported", () => {
+    const listed = listOwnedGuns(owned, withSidearm).find((gun) => gun.type === SIDEARM);
+    expect(listed).toEqual({
+      type: SIDEARM,
+      name: "Fixture Sidearm",
+      category: "Pistols",
+      unsupported: null,
     });
   });
 });
@@ -694,7 +833,12 @@ describe("adviseGunBuild", () => {
     const advice = adviseGunBuild(inventory(), RIFLE, data);
     if (!advice.ok) throw new Error(advice.reason);
 
-    expect(advice.weapon).toEqual({ type: RIFLE, name: "Fixture Rifle", bonus: null });
+    expect(advice.weapon).toEqual({
+      type: RIFLE,
+      name: "Fixture Rifle",
+      bonus: null,
+      radialBase: 0,
+    });
     // The galvanized multishot mod at full stacks (+80% and 5 x +30%) over the
     // plain +90% one of the same family, then the rank 2 copy of the damage mod.
     expect(advice.mods.map((m) => [m.name, m.rank, m.maxRank])).toEqual([
@@ -816,8 +960,8 @@ describe("adviseGunBuild", () => {
     expect(adviseGunBuild(owned, unknown, data)).toEqual({ ok: false, reason: "unknown-weapon" });
   });
 
-  it("refuses bows and charge weapons, whose numbers it would get wrong", () => {
-    expect(adviseGunBuild(inventory(), BOW, data)).toEqual({
+  it("refuses a weapon whose data lacks the stats it needs", () => {
+    expect(adviseGunBuild(inventory(), BROKEN, data)).toEqual({
       ok: false,
       reason: "unsupported-weapon",
     });
@@ -849,9 +993,11 @@ describe("adviseGunBuild", () => {
     if (!rifle.ok) throw new Error(rifle.reason);
     expect(rifle.weapon.name).toBe("Trumna Prime");
     expect(rifle.mods.map((m) => m.name)).toEqual(["Serration"]);
-    // Impact 32 and heat 53 with +165%.
+    // Impact 32 with +165%. Heat is the 53 of the direct hit plus the 50 radial
+    // attack the weapon table leaves out, with +165%.
     expect(rifle.stats.damage.impact).toBeCloseTo(84.8, 4);
-    expect(rifle.stats.damage.heat).toBeCloseTo(140.45, 4);
+    expect(rifle.stats.damage.heat).toBeCloseTo(272.95, 4);
+    expect(rifle.weapon.radialBase).toBeCloseTo(50, 4);
 
     const pistol = adviseGunBuild(owned, lexPrime);
     if (!pistol.ok) throw new Error(pistol.reason);

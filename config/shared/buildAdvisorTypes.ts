@@ -92,6 +92,9 @@ export type GunBuildAdvice =
       /** The weapon arcane to equip, or null when none owned adds burst damage. */
       arcane: AdvisedMod | null;
       stats: GunStats;
+      /** True for bows and charge, held, burst and duplex weapons, whose damage
+       *  per second is an estimate; the mod ranking is not affected. */
+      approximate: boolean;
       /** Set when the build was ranked against a faction. */
       versus: FactionDps | null;
       /** Mod capacity the build needs and the weapon has, when that is known. */
@@ -178,4 +181,7 @@ export interface AdvisedWeapon {
   name: string;
   /** A Kuva, Tenet or Coda weapon's bonus element, as a share of base damage. */
   bonus: { damageType: DamageType; value: number } | null;
+  /** Base damage of a radial attack folded into the figures; the arsenal
+   *  lists that attack in a section of its own. Zero when there is none. */
+  radialBase: number;
 }

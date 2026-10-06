@@ -525,6 +525,16 @@
                 {$tr("builds.uncounted", { count: String(uncounted) })}
               </p>
             {/if}
+            {#if advice.approximate}
+              <p class="m-0 text-xs text-warning" data-builds-approximate>
+                {$tr("builds.approximate")}
+              </p>
+            {/if}
+            {#if advice.weapon.radialBase > 0}
+              <p class="m-0 text-xs text-text-muted" data-builds-radial>
+                {$tr("builds.radialNote", { amount: decimal(advice.weapon.radialBase, 0) })}
+              </p>
+            {/if}
             <p class="m-0 text-xs text-text-muted">{$tr("builds.caveat")}</p>
           </ThemedPanel>
         {:else if loadingReview}

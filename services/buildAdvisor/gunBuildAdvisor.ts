@@ -65,6 +65,8 @@ export interface AdvisorGameData {
   arcanes: Readonly<Record<string, unknown>>;
   /** ExportWeapons from warframe-public-export-plus. */
   weapons: Readonly<Record<string, unknown>>;
+  /** Primaries and secondaries from @wfcd/items: attacks, and newer weapons. */
+  wfcdGuns: Readonly<Record<string, unknown>>;
   /** ExportUpgrades from warframe-public-export-plus. */
   upgrades: Readonly<Record<string, unknown>>;
   /** The Mods category of @wfcd/items. */
@@ -74,11 +76,11 @@ export interface AdvisorGameData {
 }
 
 const GUN_CATEGORIES = ["LongGuns", "Pistols"] as const;
-// Charge, held, burst and duplex triggers change damage or fire rate in ways
-// the calculator does not model.
-const SUPPORTED_TRIGGERS = new Set(["AUTO", "SEMI"]);
-// Bows double fire rate bonuses.
-const UNSUPPORTED_HOLSTERS = new Set(["BOW"]);
+// The triggers whose shots a second are simply the fire rate. Charge, held,
+// burst and duplex weapons are built for too, with their figures marked
+// approximate: the mod ranking holds, the absolute damage per second may not.
+const EXACT_TRIGGERS = new Set(["AUTO", "SEMI"]);
+const BOW_HOLSTER = "BOW";
 const BOW_CLASS_DIR = "/Bows/";
 const PVP_MOD = "/PvPMods/";
 const RIVEN_MOD = "/Randomized/";
@@ -119,6 +121,9 @@ function bundledGameData(): AdvisorGameData {
       disposition: getWeaponDisposition,
     },
     polarities: bundledPolarities(),
+    wfcdGuns: Object.fromEntries(
+      readWfcdItems(["Primary", "Secondary"]).map((gun) => [gun.uniqueName, gun]),
+    ),
     arcanes: readPepExport("ExportArcanes") ?? {},
     weapons: readPepExport("ExportWeapons") ?? {},
     upgrades: readPepExport("ExportUpgrades") ?? {},
@@ -138,13 +143,6 @@ function strings(value: unknown): string[] {
 
 function baseStats(weapon: Record<string, unknown>): GunBaseStats | null {
   if (!GUN_CATEGORIES.some((category) => category === weapon.productCategory)) return null;
-  if (typeof weapon.trigger !== "string" || !SUPPORTED_TRIGGERS.has(weapon.trigger)) return null;
-  if (
-    typeof weapon.holsterCategory === "string" &&
-    UNSUPPORTED_HOLSTERS.has(weapon.holsterCategory)
-  ) {
-    return null;
-  }
   const perShot = Array.isArray(weapon.damagePerShot) ? weapon.damagePerShot : [];
   const damage: DamageByType = {};
   DAMAGE_TYPE_ORDER.forEach((type, index) => {
@@ -394,11 +392,83 @@ function arcaneAtRank(
 
 interface OwnedGun {
   bonus: AdvisedWeapon["bonus"];
+  radialBase: number;
   inventory: Record<string, unknown>;
   weapon: Record<string, unknown>;
   name: string;
   base: GunBaseStats;
   classes: Set<string>;
+  /** Bows count every fire rate bonus twice. */
+  bow: boolean;
+  /** True when the trigger makes damage per second an estimate. */
+  approximate: boolean;
+}
+
+/** The weapon's entry in ExportWeapons, or one in the same shape built from
+ *  @wfcd/items for a weapon the bundled export does not have yet. */
+function weaponRecord(type: string, data: AdvisorGameData): Record<string, unknown> | null {
+  const listed = asRecord(data.weapons[type]);
+  if (listed) return listed;
+  const other = asRecord(data.wfcdGuns[type]);
+  if (!other) return null;
+  const damage = asRecord(other.damage) ?? {};
+  return {
+    displayName: other.name,
+    productCategory: other.productCategory,
+    trigger: typeof other.trigger === "string" ? other.trigger.toUpperCase() : undefined,
+    holsterCategory:
+      other.type === "Shotgun" ? "SHOTGUN" : other.type === "Bow" ? BOW_HOLSTER : undefined,
+    damagePerShot: DAMAGE_TYPE_ORDER.map((damageType) => damage[damageType] ?? 0),
+    criticalChance: other.criticalChance,
+    criticalMultiplier: other.criticalMultiplier,
+    procChance: other.procChance,
+    fireRate: other.fireRate,
+    multishot: other.multishot,
+    magazineSize: other.magazineSize,
+    reloadTime: other.reloadTime,
+  };
+}
+
+function totalOf(damage: DamageByType): number {
+  let total = 0;
+  for (const amount of Object.values(damage)) total += amount ?? 0;
+  return total;
+}
+
+function weaponName(type: string, weapon: Record<string, unknown>, data: AdvisorGameData): string {
+  if (typeof weapon.displayName === "string") return weapon.displayName;
+  const name = typeof weapon.name === "string" ? data.strings[weapon.name] : undefined;
+  return name ?? type.slice(type.lastIndexOf("/") + 1);
+}
+
+// ExportWeapons leaves the radial part out of some weapons' damage. Close
+// enough to call the listed total the direct hit alone.
+const SAME_DAMAGE = 0.6;
+
+/** Adds the radial attack @wfcd/items lists right after the direct hit, when
+ *  it fires at the same rate and the base damage does not already include it. */
+function withMissingRadial(base: GunBaseStats, wfcdGun: unknown): GunBaseStats {
+  const attacks: unknown = asRecord(wfcdGun)?.attacks;
+  if (!Array.isArray(attacks)) return base;
+  const direct = asRecord(attacks[0]);
+  const radial = asRecord(attacks[1]);
+  if (!direct || radial?.shot_type !== "AoE" || radial.speed !== direct.speed) return base;
+  const sum = (damage: unknown): number =>
+    Object.values(asRecord(damage) ?? {}).reduce<number>(
+      (total, amount) => total + (positive(amount) ?? 0),
+      0,
+    );
+  let listed = 0;
+  for (const amount of Object.values(base.damage)) listed += amount ?? 0;
+  if (Math.abs(sum(direct.damage) - listed) > SAME_DAMAGE) return base;
+
+  const extra = asRecord(radial.damage) ?? {};
+  const damage: DamageByType = {};
+  for (const type of DAMAGE_TYPE_ORDER) {
+    const amount = (base.damage[type] ?? 0) + (positive(extra[type]) ?? 0);
+    if (amount > 0) damage[type] = amount;
+  }
+  return { ...base, damage };
 }
 
 function ownedGun(
@@ -408,17 +478,40 @@ function ownedGun(
 ): OwnedGun | GunBuildAdviceFailure {
   const inventory = asRecord(unwrapInventoryPayload(payload));
   if (!inventory || !ownsWeapon(inventory, weaponType)) return "weapon-not-owned";
-  const weapon = asRecord(data.weapons[weaponType]);
+  const weapon = weaponRecord(weaponType, data);
   if (!weapon) return "unknown-weapon";
   const listed = baseStats(weapon);
   if (!listed) return "unsupported-weapon";
+  // The bonus is a share of the weapon's listed base damage.
   const bonus = progenitorBonus(findGun(inventory, weaponType));
-  const base = bonus ? withBonusElement(listed, bonus) : listed;
+  const withBonus = bonus ? withBonusElement(listed, bonus) : listed;
+  const base = withMissingRadial(withBonus, data.wfcdGuns[weaponType]);
   const classes = weaponClasses(weaponType, weapon, data.weapons);
   // Crossbows holster as rifles but sit under the bow classes.
-  if ([...classes].some((c) => c.includes(BOW_CLASS_DIR))) return "unsupported-weapon";
-  const name = typeof weapon.name === "string" ? data.strings[weapon.name] : undefined;
-  return { inventory, weapon, name: name ?? weaponType, base, classes, bonus };
+  const bow =
+    weapon.holsterCategory === BOW_HOLSTER || [...classes].some((c) => c.includes(BOW_CLASS_DIR));
+  return {
+    inventory,
+    weapon,
+    name: weaponName(weaponType, weapon, data),
+    base,
+    classes,
+    bonus,
+    radialBase: totalOf(base.damage) - totalOf(withBonus.damage),
+    bow,
+    approximate: bow || typeof weapon.trigger !== "string" || !EXACT_TRIGGERS.has(weapon.trigger),
+  };
+}
+
+/** A mod's bonuses as this weapon gets them. */
+function fitted<T extends { effects: readonly ModEffect[] }>(mod: T, gun: OwnedGun): T {
+  if (!gun.bow) return mod;
+  return {
+    ...mod,
+    effects: mod.effects.map((effect) =>
+      effect.stat === "fireRate" ? { ...effect, value: effect.value * 2 } : effect,
+    ),
+  };
 }
 
 const INVENTORY_ITEM_ID = /^[0-9a-f]{24}$/i;
@@ -476,7 +569,8 @@ export function evaluateGunConfig(
     }
     const known = type ? byType.get(type) : undefined;
     const riven = INVENTORY_ITEM_ID.test(ref) ? rivens.get(`${RIVEN_ID}${ref}`) : undefined;
-    const mod = riven ?? (known ? modAtRank(known, rank, data, options) : null);
+    const found = riven ?? (known ? modAtRank(known, rank, data, options) : null);
+    const mod = found ? fitted(found, gun) : null;
     if (type && mod) mods.push({ slot, type, ...mod });
     else unrecognised.push(type ?? ref);
   });
@@ -492,7 +586,7 @@ export function evaluateGunConfig(
 
   return {
     ok: true,
-    weapon: { type: weaponType, name: gun.name, bonus: gun.bonus },
+    weapon: { type: weaponType, name: gun.name, bonus: gun.bonus, radialBase: gun.radialBase },
     mods,
     arcane: equippedArcane,
     unrecognised,
@@ -519,7 +613,8 @@ export function adviseGunBuild(
     const rank = owned.get(entry.uniqueName);
     const upgrade = asRecord(data.upgrades[entry.uniqueName]);
     if (rank === undefined || !upgrade || !modFits(upgrade, classes, weaponTags)) continue;
-    const mod = modAtRank(entry, rank, data, options);
+    const found = modAtRank(entry, rank, data, options);
+    const mod = found ? fitted(found, gun) : null;
     // Recommending a mod with a rule the numbers leave out would overrate it.
     if (!mod?.effects.length || mod.unmodelledRule) continue;
     candidates.push({
@@ -532,7 +627,8 @@ export function adviseGunBuild(
     keys.set(entry.uniqueName, familyKeys(entry.uniqueName, upgrade.compat as string, mod.name));
   }
   assignFamilies(candidates, keys);
-  for (const riven of rivensFor(gun, data)) {
+  for (const owned of rivensFor(gun, data)) {
+    const riven = fitted(owned, gun);
     if (riven.effects.length === 0) continue;
     candidates.push({
       id: riven.type,
@@ -585,7 +681,7 @@ export function adviseGunBuild(
 
   return {
     ok: true,
-    weapon: { type: weaponType, name: gun.name, bonus: gun.bonus },
+    weapon: { type: weaponType, name: gun.name, bonus: gun.bonus, radialBase: gun.radialBase },
     mods: build.mods.map((m) => ({
       type: m.id,
       name: m.name,
@@ -609,6 +705,7 @@ export function adviseGunBuild(
         }
       : null,
     stats: build.stats,
+    approximate: gun.approximate,
     versus: faction ? targetDps(build.stats, faction) : null,
     capacity: capacity
       ? { used: minimumDrain(build.mods, capacity.polarities), total: capacity.total }

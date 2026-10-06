@@ -1,59 +1,92 @@
 # Build advisor: where things stand
 
-Written 2026-10-05 at the end of the first working session. Read this first
-when picking the work back up; `damage-rules.md` has the detail behind the
-numbers and `../adr/` has the two design decisions.
+Last updated 2026-10-06, when the gun advisor MVP reached feature complete. Read
+this first when picking the work back up. `damage-rules.md` has the three
+in-game checks behind the arsenal numbers, `../adr/` the two design decisions,
+and `reports/` the research the later work was built from.
 
 ## What exists
 
 - **Electron bump.** `[deps] - bump electron to 41.10.7` on
   `deps/electron-41.10.7`, which clears the three high-severity Electron
   advisories. `feat/build-advisor` is branched from it.
-- **The advisor** in `services/buildAdvisor/`: a parser for mod stat text, a gun
-  stat calculator, a build search and an adapter that joins the inventory to the
-  bundled game data. Given an owned primary or secondary it returns the best
-  eight owned mods by burst DPS, the computed arsenal stats, each mod's share of
-  the damage, and every stat line it left out.
+- **The advisor** in `services/buildAdvisor/`. For an owned primary or secondary
+  it recommends up to eight mods and a weapon arcane from what the inventory
+  holds, and returns the computed stats, each mod's share of the damage, and
+  every stat line it assumed or left out. It models: mod exclusivity; "On Kill"
+  and similar bonuses at full stacks; the six damage arcanes; Rivens; Kuva, Tenet
+  and Coda bonus elements; mod capacity and polarities; and, with a target
+  faction chosen, its weaknesses, armour and status effects.
 - **The Builds view** (`src/views/BuildsView.svelte`), a sidebar entry between
-  Rivens and Run Analysis. Owned guns on the left with search; the recommended
-  mods and an arsenal-style stats table on the right, with the recommendation
-  beside each saved config. It talks to the advisor through two IPC calls in
-  `ipc/buildAdvisorIpc.ts` and holds no build logic itself.
+  Rivens and Run Analysis. Owned guns on the left with search; the recommendation
+  and an arsenal-style stats table on the right, beside each saved config.
+  Controls: a Target faction, "Stacks up" and "Fit capacity". It talks to the
+  advisor through two IPC calls in `ipc/buildAdvisorIpc.ts` and holds no build
+  logic itself.
 - **A script** for checking a gun from the command line:
   `node scripts/dev/advise-gun-build.cjs <inventory.json> "<weapon name>"` after
   `pnpm run build:main`.
-- **Tests.** 39 unit tests across four files in `tests/main/buildAdvisor*.test.ts`
-  and four end-to-end tests in `e2e/builds.spec.ts`.
+- **Tests.** Nine unit test files in `tests/main/buildAdvisor*.test.ts` and six
+  end-to-end tests in `e2e/builds.spec.ts`.
 
 ## How far it can be trusted
 
-The calculator matched the in-game arsenal on every stat it models for three
-guns, read from screenshots: Lex Prime, Trumna Prime and Pyrana Prime. It also
-matched an Overframe build for Lex Prime exactly. `damage-rules.md` lists what
-each check covered.
+Three layers, from firm to soft:
 
-Two bugs were found by checking against real data, and both are fixed:
+1. **Arsenal numbers: checked in game.** The calculator matched the arsenal on
+   every stat it models for Lex Prime, Trumna Prime and Pyrana Prime, read from
+   screenshots, and matched an Overframe build for Lex Prime exactly. Mod costs
+   on matching polarities match the mod cards in the same screenshots.
+2. **Game rules: from the wiki, not checked in game.** Faction weaknesses, the
+   armour formula, status effect values, conditional mod values and arcane
+   values are as the wiki and the game data state them.
+3. **The combined damage estimate: this project's own model.** How procs,
+   Viral, armour strip and status ticks add up to one number against a target
+   is an assumption-laden estimate. Treat it as a ranking, and check it in the
+   Simulacrum before relying on its absolute figures.
+
+Unverified readings to confirm in game, cheapest first:
+
+- A Kuva, Tenet or Coda weapon's bonus percentage (the view shows what was
+  computed; compare with the arsenal).
+- The cost of a mod on the wrong polarity (rounding).
+- Whether Deadhead and Dexterity share Merciless's damage bucket.
+- Burst, held and charge weapons' shots a second.
+
+Bugs found by checking against real data, all fixed:
 
 - A mod and its Amalgam form were recommended together.
 - The inventory stores the eight mod slots in the reverse of the arsenal's
   order, so elements combined in the wrong order when reading a saved config.
+- Critical Delay was recommended with Point Strike, which the game forbids.
+- The bundled mod text writes line breaks as a backslash and an n, so
+  conditional lines were not matched at first.
+- The search got stuck when bringing in a second element or a cheaper pair of
+  mods needed two changes at once.
 
-## What the recommendations get wrong today
+## What it still does not do
 
-In rough order of how much they change a recommendation:
+- Melee, warframes and companions.
+- Shields, Overguard, status immunity, light units, sub-factions and Bane mods.
+- Ramp-up time: the target estimate is a steady state, which flatters status
+  builds against enemies that die fast.
+- The "damage per status type" bonus of Galvanized Aptitude, Savvy and Shot.
+- Arcanes other than Merciless, Deadhead and Dexterity; set bonuses; the exilus
+  slot; Incarnon forms.
+- Elite Archimedea weekly modifiers and loadout restrictions.
+- Kitguns and other modular weapons.
+- A guaranteed best build: the search is greedy with single and paired swaps.
 
-1. (Addressed, see the research section below.) Conditional bonuses were
-   ignored, so a Galvanized mod's plain form usually outranked it.
-2. Mod capacity and polarities are not checked, so a build may not fit.
-3. There is no enemy. Status, faction and armour-related mods add nothing, and
-   the ranking is burst DPS alone.
-4. Arcanes, rivens, set bonuses and the exilus slot are not counted.
-5. Radial damage is missing from the weapon data, so weapons with an explosion
-   come out low (seen on Trumna Prime).
-6. Kuva, Tenet and Coda bonus elements are not read.
-7. Bows, crossbows, and charge, held, burst and duplex weapons are refused. In
-   the test inventory that was 30 of 85 guns, plus 5 missing from the game data.
-8. The search is greedy with single swaps and can miss the best set.
+## Next steps
+
+- Validate the target estimate in the Simulacrum for two or three builds.
+- The in-product agent that calls the advisor as a tool was deferred; see
+  `../adr/0001-deterministic-build-calculator-before-any-agent.md`.
+- The German and Chinese strings for the Builds view were written without a
+  native review.
+
+The section below is the build log: what was added after the first session, in
+order, with the detail behind each piece.
 
 ## Research (added later on 2026-10-05)
 
@@ -164,22 +197,32 @@ page:
   from 25% to 60% (the wiki's range). On the test inventory that gives Kuva Brakk
   44.0% Heat, Tenet Arca Plasmor 28.6% Toxin and Coda Sporothrix 60.0%
   Radiation; compare one with the arsenal to confirm.
+- Done after the research: wider weapon coverage. On the test inventory the
+  advisor builds for 81 of 86 owned guns, up from 51.
+  - Burst, held, charge and duplex weapons and bows are built for, with
+    `approximate: true` and a warning in the view: how a burst or a charge turns
+    into shots a second is not modelled, so their damage per second is an
+    estimate while the mod ranking holds. Bows count every fire rate bonus twice,
+    as the mod text says.
+  - `ExportWeapons.damagePerShot` already includes the explosion for most
+    explosive weapons (Acceltra Prime, Ogris, Staticor). For 19 guns it does not
+    (Trumna Prime, Opticor, Coda Sporothrix and others); there the radial attack
+    `@wfcd/items` lists right after the direct hit, at the same fire rate, is
+    added to base damage. The figures then sum direct and radial damage, where
+    the arsenal shows them in separate sections; the view says so. This
+    supersedes the earlier statement that Trumna Prime's saved config matches the
+    arsenal row for row: its Heat now includes the radial part.
+  - A weapon missing from the bundled `ExportWeapons` (Steflos Prime, Nunchasa,
+    Aksondol) is built from its `@wfcd/items` entry.
+  - Still refused: kitguns and other modular weapons (no source has assembled
+    stats), and three guns whose data lacks a usable stat (Nataruk, Convectrix,
+    Grimoire).
 - The bundled `@wfcd/items` text writes a line break inside a stat line as a
   literal backslash and n, not a newline. The parser accepts both.
 
 Creator coverage is thin: TheKengineer is well covered, Brozime is one older
 video plus three tables from his vault, and nothing from Tactical Potato could
 be read.
-
-## Next steps, as discussed
-
-- "On Kill" stacks with a stacks-up toggle (item 1). Suggested first.
-- Capacity and polarities (item 2).
-- An in-product agent that calls the advisor as a tool was considered and
-  deferred; see `../adr/0001-deterministic-build-calculator-before-any-agent.md`.
-
-The German and Chinese strings for the Builds view were written without a
-native review.
 
 ## Working on this machine
 
