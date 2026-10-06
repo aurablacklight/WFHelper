@@ -643,7 +643,12 @@ export interface IpcInvokeMap {
     return: OwnedGunSummary[];
   };
   reviewGunBuild: {
-    args: [weaponType: string, assumeConditionals: boolean, faction: AdvisorFaction | null];
+    args: [
+      weaponType: string,
+      assumeConditionals: boolean,
+      faction: AdvisorFaction | null,
+      respectCapacity: boolean,
+    ];
     return: GunBuildReview;
   };
   getRivens: {

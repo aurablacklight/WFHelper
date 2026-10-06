@@ -40,7 +40,14 @@ test.describe("Build advisor", () => {
       ],
       // Config A holds the rank 10 Hornet Strike alone.
       Pistols: [
-        { ItemId: id(102), ItemType: LEX_PRIME, Configs: [{ Upgrades: [id(1).$oid] }, {}, {}] },
+        {
+          ItemId: id(102),
+          ItemType: LEX_PRIME,
+          // Rank 30 with a catalyst and an arcane adapter: 60 capacity.
+          XP: 450_000,
+          Features: 33,
+          Configs: [{ Upgrades: [id(1).$oid] }, {}, {}],
+        },
       ],
       Upgrades: [
         { ItemId: id(1), ItemType: HORNET_STRIKE, UpgradeFingerprint: '{"lvl":10}' },
@@ -79,6 +86,9 @@ test.describe("Build advisor", () => {
     await expect(page.locator("[data-builds-arcane]")).toHaveCount(1);
     await expect(page.locator(`[data-builds-mod="${SECONDARY_MERCILESS}"]`)).toBeVisible();
     await expect(page.locator("[data-builds-assumed]")).toHaveCount(2);
+    // Hornet Strike (14) halves on Lex Prime's built-in attack polarity; the
+    // galvanized mod costs 14.
+    await expect(page.locator("[data-builds-capacity]")).toContainText("21/60");
 
     // Puncture 144 with +220% and the arcane's +360% (6.8x); config A has +220% only.
     await expect(stat("puncture")).toHaveText(["Puncture", "979.2", "460.8"]);

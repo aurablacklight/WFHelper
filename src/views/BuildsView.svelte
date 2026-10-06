@@ -79,6 +79,8 @@
   let stacksUp = $state(true);
   // The select holds "" for no target.
   let targetValue = $state("");
+  // On by default: a recommendation that does not fit the weapon is no use.
+  let fitCapacity = $state(true);
   const target = $derived(ADVISOR_FACTIONS.find((faction) => faction === targetValue) ?? null);
 
   const inv = $derived($inventoryData);
@@ -114,13 +116,14 @@
     const type = selectedType;
     const assume = stacksUp;
     const faction = target;
+    const fit = fitCapacity;
     if (!type || !inv) {
       review = null;
       return;
     }
     let stale = false;
     loadingReview = true;
-    void invoke("reviewGunBuild", type, assume, faction)
+    void invoke("reviewGunBuild", type, assume, faction, fit)
       .then((result) => {
         if (!stale) review = result;
       })
@@ -300,6 +303,13 @@
       >
         <span data-builds-stacks>{$tr("builds.stacksUp")}</span>
       </ThemedButton>
+      <ThemedButton
+        active={fitCapacity}
+        title={$tr("builds.fitCapacityHint")}
+        onClick={() => (fitCapacity = !fitCapacity)}
+      >
+        <span data-builds-fit>{$tr("builds.fitCapacity")}</span>
+      </ThemedButton>
       <SearchBox bind:value={search} />
     </div>
   </div>
@@ -384,6 +394,14 @@
             <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <h3 class="m-0 text-sm font-semibold text-text-primary">{advice.weapon.name}</h3>
               <span class="text-xs text-text-muted">{$tr("builds.recommendedTitle")}</span>
+              {#if advice.capacity}
+                <span class="ml-auto text-xs text-text-secondary" data-builds-capacity>
+                  {$tr("builds.capacity", {
+                    used: String(advice.capacity.used),
+                    total: String(advice.capacity.total),
+                  })}
+                </span>
+              {/if}
             </div>
 
             {#if recommended.length === 0}

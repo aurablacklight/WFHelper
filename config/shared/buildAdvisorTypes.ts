@@ -94,6 +94,8 @@ export type GunBuildAdvice =
       stats: GunStats;
       /** Set when the build was ranked against a faction. */
       versus: FactionDps | null;
+      /** Mod capacity the build needs and the weapon has, when that is known. */
+      capacity: { used: number; total: number } | null;
       unmodded: GunStats;
     }
   | { ok: false; reason: GunBuildAdviceFailure };

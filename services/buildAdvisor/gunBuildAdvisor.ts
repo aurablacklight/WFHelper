@@ -24,6 +24,7 @@ import type {
 import { computeGunStats } from "./gunStats";
 import { parseArcaneRank } from "./arcaneEffects";
 
+import { minimumDrain, type SlottedMod } from "./modCapacity";
 import { targetDps } from "./statusModel";
 import { parseModDescription, parseModStats } from "./modEffects";
 
@@ -36,6 +37,8 @@ interface AdvisorModEntry {
 }
 
 export interface AdvisorGameData {
+  /** Built-in mod slot polarities by weapon, as @wfcd/items names them. */
+  polarities: Readonly<Record<string, readonly string[]>>;
   /** ExportArcanes from warframe-public-export-plus. */
   arcanes: Readonly<Record<string, unknown>>;
   /** ExportWeapons from warframe-public-export-plus. */
@@ -79,6 +82,7 @@ let bundled: AdvisorGameData | null = null;
 
 function bundledGameData(): AdvisorGameData {
   bundled ??= {
+    polarities: bundledPolarities(),
     arcanes: readPepExport("ExportArcanes") ?? {},
     weapons: readPepExport("ExportWeapons") ?? {},
     upgrades: readPepExport("ExportUpgrades") ?? {},
@@ -264,6 +268,8 @@ interface AdvisorOptions {
   assumeConditionals: boolean;
   /** Rank on damage to this faction; leave out to rank on the raw number. */
   faction?: AdvisorFaction | null;
+  /** Only recommend what fits the weapon as it is; on unless set to false. */
+  respectCapacity?: boolean;
 }
 
 // What experienced players assume when they compare builds.
@@ -282,7 +288,7 @@ interface RankedMod {
   unmodelledRule: boolean;
 }
 
-interface Candidate extends BuildCandidate, RankedMod {}
+interface Candidate extends BuildCandidate, RankedMod, SlottedMod {}
 
 function modAtRank(
   entry: AdvisorModEntry,
@@ -475,7 +481,13 @@ export function adviseGunBuild(
     const mod = modAtRank(entry, rank, data, options);
     // Recommending a mod with a rule the numbers leave out would overrate it.
     if (!mod?.effects.length || mod.unmodelledRule) continue;
-    candidates.push({ id: entry.uniqueName, family: entry.uniqueName, ...mod });
+    candidates.push({
+      id: entry.uniqueName,
+      family: entry.uniqueName,
+      ...mod,
+      drain: (positive(upgrade.baseDrain) ?? 0) + mod.rank,
+      polarity: typeof upgrade.polarity === "string" ? upgrade.polarity : null,
+    });
     keys.set(entry.uniqueName, familyKeys(entry.uniqueName, upgrade.compat as string, mod.name));
   }
   assignFamilies(candidates, keys);
@@ -488,12 +500,24 @@ export function adviseGunBuild(
     ? (stats: GunStats): number => targetDps(stats, faction).burstDps
     : undefined;
   const valueOf = (stats: GunStats): number => (score ? score(stats) : stats.burstDps);
-  let build = findBestGunBuild(base, candidates, undefined, [], score);
-  for (const type of modelledArcanes(gun.weapon)) {
+  const capacity = options.respectCapacity === false ? null : weaponCapacity(gun, weaponType, data);
+  const limit = capacity
+    ? (mods: readonly Candidate[]): boolean =>
+        minimumDrain(mods, capacity.polarities) <= capacity.total
+    : undefined;
+  let build = findBestGunBuild(base, candidates, undefined, [], score, limit);
+  for (const type of capacity?.arcaneSlot === false ? [] : modelledArcanes(gun.weapon)) {
     const rank = owned.get(type);
     const option = rank === undefined ? null : arcaneAtRank(type, rank, data, options);
     if (!option?.effects.length) continue;
-    const withArcane = findBestGunBuild(base, candidates, undefined, [option.effects], score);
+    const withArcane = findBestGunBuild(
+      base,
+      candidates,
+      undefined,
+      [option.effects],
+      score,
+      limit,
+    );
     if (valueOf(withArcane.stats) > valueOf(build.stats) * (1 + MIN_ARCANE_GAIN)) {
       build = withArcane;
       arcane = { type, ...option };
@@ -535,6 +559,9 @@ export function adviseGunBuild(
       : null,
     stats: build.stats,
     versus: faction ? targetDps(build.stats, faction) : null,
+    capacity: capacity
+      ? { used: minimumDrain(build.mods, capacity.polarities), total: capacity.total }
+      : null,
     unmodded: computeGunStats(base, []),
   };
 }
@@ -603,4 +630,81 @@ export function reviewGun(
     });
   });
   return { advice, configs };
+}
+
+// @wfcd/items names polarities by focus school; the game data uses these tags.
+const POLARITY_TAGS: Readonly<Record<string, string>> = {
+  madurai: "AP_ATTACK",
+  vazarin: "AP_DEFENSE",
+  naramon: "AP_TACTIC",
+  zenurik: "AP_POWER",
+  unairu: "AP_WARD",
+  penjaga: "AP_PRECEPT",
+  umbra: "AP_UMBRA",
+};
+
+function bundledPolarities(): Record<string, readonly string[]> {
+  const polarities: Record<string, readonly string[]> = {};
+  for (const item of readWfcdItems(["Primary", "Secondary"])) {
+    const listed: unknown = (item as { polarities?: unknown }).polarities;
+    if (Array.isArray(listed)) polarities[item.uniqueName] = strings(listed);
+  }
+  return polarities;
+}
+
+// Bits of an inventory weapon's Features, matched against 86 owned guns: every
+// gun whose saved mods need more than 30 capacity has bit 1, and 29 of the 30
+// with an arcane equipped have bit 32.
+const FEATURE_CATALYST = 1;
+const FEATURE_ARCANE_ADAPTER = 32;
+const AFFINITY_PER_RANK_SQUARED = 500;
+const DEFAULT_MAX_RANK = 30;
+
+interface WeaponCapacity {
+  total: number;
+  /** Polarities of the eight mod slots, in no particular order. */
+  polarities: string[];
+  /** False when the weapon has no arcane slot unlocked. */
+  arcaneSlot: boolean;
+}
+
+/** What the owned weapon can hold, or null when the inventory does not say.
+ *  Built-in polarities and forma are added together; a forma that replaced a
+ *  built-in polarity is therefore counted twice. */
+function weaponCapacity(
+  gun: OwnedGun,
+  weaponType: string,
+  data: AdvisorGameData,
+): WeaponCapacity | null {
+  const entry = asRecord(findGun(gun.inventory, weaponType));
+  const affinity = positive(entry?.XP);
+  if (!entry || affinity === null) return null;
+  const maxRank = positive(gun.weapon.maxLevelCap) ?? DEFAULT_MAX_RANK;
+  const rank = Math.min(maxRank, Math.floor(Math.sqrt(affinity / AFFINITY_PER_RANK_SQUARED)));
+  const features = typeof entry.Features === "number" ? entry.Features : 0;
+
+  const polarities = (data.polarities[weaponType] ?? []).flatMap(
+    (name) => POLARITY_TAGS[name] ?? [],
+  );
+  const forma: unknown = entry.Polarity;
+  for (const raw of Array.isArray(forma) ? forma.slice(0, 16) : []) {
+    const slot = asRecord(raw);
+    if (typeof slot?.Value !== "string" || typeof slot.Slot !== "number") continue;
+    if (slot.Slot < GUN_MOD_SLOTS) polarities.push(slot.Value);
+  }
+
+  const configs: unknown = entry.Configs;
+  const arcaneEquipped =
+    Array.isArray(configs) &&
+    configs.some((config) => {
+      const refs: unknown = asRecord(config)?.Upgrades;
+      return (
+        Array.isArray(refs) && typeof refs[GUN_ARCANE_SLOT] === "string" && refs[GUN_ARCANE_SLOT]
+      );
+    });
+  return {
+    total: rank * ((features & FEATURE_CATALYST) !== 0 ? 2 : 1),
+    polarities: polarities.slice(0, GUN_MOD_SLOTS),
+    arcaneSlot: (features & FEATURE_ARCANE_ADAPTER) !== 0 || arcaneEquipped,
+  };
 }

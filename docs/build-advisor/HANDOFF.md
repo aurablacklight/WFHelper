@@ -126,6 +126,26 @@ page:
     immunity, light units, sub-factions or Bane mods.
   - The search now also trades two mods for two elemental mods at once, since
     bringing in Viral one mod at a time passes through Blast or Gas.
+- Done after the research: mod capacity and polarities
+  (`services/buildAdvisor/modCapacity.ts`). A recommendation now has to fit the
+  weapon as it is, unless the "Fit capacity" toggle is off.
+  - Capacity is the weapon's rank (from its affinity, 500 × rank²), doubled by a
+    catalyst. A mod costs its base drain plus its rank, halved rounding up on a
+    matching polarity. Those costs match the mod cards in three arsenal
+    screenshots.
+  - The inventory's `Features` bits were worked out from 86 owned guns: 1 is the
+    catalyst, 2 the exilus adapter, 32 the arcane adapter. An arcane is only
+    recommended to a weapon with bit 32 or one already equipped.
+  - Slot positions are not modelled. The game data gives a weapon's built-in
+    polarities without saying which slots they are in, so the advisor works out
+    the cheapest placement and assumes the player uses it. Built-in polarities
+    and forma are added together, which double counts a forma that replaced a
+    built-in polarity. The capacity of a saved config is not shown for the same
+    reason.
+  - Wrong-polarity cost is rounded to nearest (the wiki's pages disagree).
+  - Under a capacity limit the search also trades any two mods for any two
+    others, since one costly pick can block a cheaper pair worth more. A full
+    recommendation takes up to about 0.6 s.
 - The bundled `@wfcd/items` text writes a line break inside a stat line as a
   literal backslash and n, not a newline. The parser accepts both.
 

@@ -57,7 +57,10 @@ export function findBestGunBuild<T extends BuildCandidate>(
    *  element order changes; with one, elemental mods are also put in the order
    *  that scores best, since the order decides which elements combine. */
   score?: (stats: GunStats) => number,
+  /** False for a set of mods the weapon cannot hold, such as one over capacity. */
+  limit?: (mods: readonly T[]) => boolean,
 ): GunBuild<T> {
+  const allowed = limit ?? ((): boolean => true);
   const statsOf = (mods: readonly BuildCandidate[]): GunStats =>
     computeGunStats(base, [...mods.map((m) => m.effects), ...always]);
 
@@ -89,7 +92,7 @@ export function findBestGunBuild<T extends BuildCandidate>(
     while (chosen.length < slots) {
       let pick: T | null = null;
       for (const candidate of candidates) {
-        if (!fits(candidate, chosen)) continue;
+        if (!fits(candidate, chosen) || !allowed([...chosen, candidate])) continue;
         const value = valueOf([...chosen, candidate]);
         if (value > best + MIN_GAIN) {
           best = value;
@@ -114,6 +117,7 @@ export function findBestGunBuild<T extends BuildCandidate>(
     for (let i = 0; i < elemental.length; i++) {
       for (let j = i + 1; j < elemental.length; j++) {
         if (!fits(elemental[j], [elemental[i]])) continue;
+        if (!allowed([...chosen, elemental[i], elemental[j]])) continue;
         const value = valueOf([...chosen, elemental[i], elemental[j]]);
         if (value > best + MIN_GAIN) {
           best = value;
@@ -130,6 +134,7 @@ export function findBestGunBuild<T extends BuildCandidate>(
       for (const candidate of candidates) {
         if (!fits(candidate, rest)) continue;
         const next = [...rest.slice(0, i), candidate, ...rest.slice(i)];
+        if (!allowed(next)) continue;
         const value = valueOf(next);
         if (value > best + MIN_GAIN) {
           best = value;
@@ -145,8 +150,10 @@ export function findBestGunBuild<T extends BuildCandidate>(
   // combination (heat with cold is blast before toxin makes it viral and heat),
   // so two chosen mods are also traded for two elemental ones at once.
   const swapPair = (): boolean => {
-    if (!score) return false;
-    const elemental = candidates.filter((c) => primaryElement(c) !== null);
+    if (!score && !limit) return false;
+    // Under a capacity limit any two mods may need to change together: a costly
+    // pick can block a cheaper pair that is worth more.
+    const elemental = limit ? candidates : candidates.filter((c) => primaryElement(c) !== null);
     for (let i = 0; i < chosen.length; i++) {
       for (let j = i + 1; j < chosen.length; j++) {
         const rest = chosen.filter((_, index) => index !== i && index !== j);
@@ -155,6 +162,7 @@ export function findBestGunBuild<T extends BuildCandidate>(
           for (let b = a + 1; b < elemental.length; b++) {
             if (!fits(elemental[b], [...rest, elemental[a]])) continue;
             const next = [...rest, elemental[a], elemental[b]];
+            if (!allowed(next)) continue;
             const value = valueOf(next);
             if (value > best + MIN_GAIN) {
               best = value;

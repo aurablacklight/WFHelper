@@ -1,8 +1,7 @@
-// Estimates damage per second against a faction once armour and status effects
-// are counted. The game rules are the wiki's (read 2026-10-05); turning them
-// into one number assumes sustained fire on one target, procs arriving at random
-// (Poisson), and Viral, armour strip and status ticks acting independently. That
-// combination is this project's model and has not been checked in the Simulacrum.
+// Estimates damage per second to a faction with armour and status effects. The
+// rules are the wiki's (read 2026-10-05). Combining them assumes sustained fire
+// on one target, procs arriving at random, and Viral, armour strip and ticks
+// acting independently: this project's own model, not checked in the Simulacrum.
 
 import type {
   AdvisorFaction,

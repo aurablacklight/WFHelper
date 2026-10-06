@@ -26,13 +26,20 @@ function register(): void {
   handleAuthorized(
     BUILD_ADVISOR_REVIEW,
     assertMainRendererSender,
-    (_event, weaponType: unknown, assumeConditionals: unknown, faction: unknown) => {
+    (
+      _event,
+      weaponType: unknown,
+      assumeConditionals: unknown,
+      faction: unknown,
+      respectCapacity: unknown,
+    ) => {
       const type = toNonEmptyString(weaponType, 512);
       if (!type || !ctx.currentInventoryData) return NOT_OWNED;
       return gunBuildAdvisor.reviewGun(ctx.currentInventoryData, type, undefined, {
         // Stacks up unless the renderer asks for arsenal numbers.
         assumeConditionals: assumeConditionals !== false,
         faction: knownFaction(faction),
+        respectCapacity: respectCapacity !== false,
       });
     },
   );
