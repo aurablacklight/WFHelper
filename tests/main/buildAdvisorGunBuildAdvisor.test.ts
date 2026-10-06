@@ -20,6 +20,8 @@ const PISTOL_DAMAGE = "/Lotus/Upgrades/Mods/Pistol/WeaponDamageAmountMod";
 const PVP_DAMAGE = "/Lotus/Upgrades/Mods/PvPMods/Rifle/FixturePvPMod";
 const BEAM_ONLY = "/Lotus/Upgrades/Mods/Rifle/FixtureBeamMod";
 const DAMAGE_AMALGAM = "/Lotus/Upgrades/Mods/DualSource/Rifle/FixtureRushMod";
+const CRIT = "/Lotus/Upgrades/Mods/Rifle/WeaponCritChanceMod";
+const CRIT_CORRUPTED = "/Lotus/Upgrades/Mods/Rifle/DualStat/CorruptedCritRateFireRateRifle";
 const HEAT = "/Lotus/Upgrades/Mods/Rifle/FixtureHeatMod";
 const COLD = "/Lotus/Upgrades/Mods/Rifle/FixtureColdMod";
 const TOXIN = "/Lotus/Upgrades/Mods/Rifle/FixtureToxinMod";
@@ -63,6 +65,8 @@ const data: AdvisorGameData = {
     [DAMAGE]: { compat: RIFLE_BASE },
     [DAMAGE_FLAWED]: { compat: RIFLE_BASE },
     [DAMAGE_AMALGAM]: { compat: RIFLE_BASE },
+    [CRIT]: { compat: RIFLE_BASE },
+    [CRIT_CORRUPTED]: { compat: RIFLE_BASE },
     [HEAT]: { compat: RIFLE_BASE },
     [COLD]: { compat: RIFLE_BASE },
     [TOXIN]: { compat: RIFLE_BASE },
@@ -100,6 +104,18 @@ const data: AdvisorGameData = {
       fusionLimit: 0,
       levelStats: [{ stats: [`+60% ${element}`] }],
     })),
+    {
+      uniqueName: CRIT,
+      name: "Fixture Point Strike",
+      fusionLimit: 0,
+      levelStats: [{ stats: ["+150% Critical Chance"] }],
+    },
+    {
+      uniqueName: CRIT_CORRUPTED,
+      name: "Fixture Critical Delay",
+      fusionLimit: 0,
+      levelStats: [{ stats: ["+200% Critical Chance", "-20% Fire Rate (x2 for Bows)"] }],
+    },
     {
       uniqueName: DAMAGE_AMALGAM,
       name: "Amalgam Fixture Serration",
@@ -342,6 +358,21 @@ describe("adviseGunBuild", () => {
       "Amalgam Fixture Serration",
       "Fixture Chamber",
     ]);
+  });
+
+  it("never pairs a corrupted crit chance mod with its standard counterpart", () => {
+    const owned = inventory({
+      Upgrades: [],
+      RawUpgrades: [
+        { ItemType: CRIT, ItemCount: 1 },
+        { ItemType: CRIT_CORRUPTED, ItemCount: 1 },
+      ],
+    });
+    const advice = adviseGunBuild(owned, RIFLE, data);
+    if (!advice.ok) throw new Error(advice.reason);
+    // Both together would be strongest (0.9 crit chance at 0.8 fire rate), but
+    // the game refuses the pair. Alone, +150% beats +200% with -20% fire rate.
+    expect(advice.mods.map((m) => m.name)).toEqual(["Fixture Point Strike"]);
   });
 
   it("applies a fire rate lock written in the mod's description", () => {

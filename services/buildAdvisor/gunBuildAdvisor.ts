@@ -162,15 +162,27 @@ function modFits(
 
 // A mod and its other forms cannot be equipped together. Flawed, Primed and
 // Galvanized forms share a path stem; an Amalgam form shares only the name.
-function familyKeys(type: string, compat: string, name: string): [string, string] {
-  const pathStem = type
-    .slice(type.lastIndexOf("/") + 1)
-    .replace(/(?:Beginner|Intermediate|Expert)$/, "")
+function familyKeys(type: string, compat: string, name: string): string[] {
+  const segment = type.slice(type.lastIndexOf("/") + 1);
+  const pathStem = segment
+    .replace(/(?:Beginner|Intermediate|Expert)+$/, "")
     .replace(/SPMod$/, "Mod")
     .replace(/^Primed/, "");
   const nameStem = name.replace(/^(?:Primed|Flawed|Amalgam|Galvanized) /, "");
-  return [`path|${compat}|${pathStem}`, `name|${compat}|${nameStem}`];
+  const keys = [`path|${compat}|${pathStem}`, `name|${compat}|${nameStem}`];
+  const analogue = CORRUPTED_ANALOGUE[segment];
+  if (analogue) keys.push(`path|${compat}|${analogue}`);
+  return keys;
 }
+
+// The wiki's Mod page: a corrupted mod that adds critical chance cannot be
+// equipped with its standard counterpart (Critical Delay with Point Strike).
+// Neither the path nor the name links them, so they are listed.
+const CORRUPTED_ANALOGUE: Readonly<Record<string, string>> = {
+  CorruptedCritRateFireRateRifle: "WeaponCritChanceMod",
+  CorruptedCritChanceFireRateShotgun: "WeaponCritChanceMod",
+  CorruptedCritChanceFireRatePistol: "WeaponCritChanceMod",
+};
 
 /** Gives every mod linked through a shared key the same family. */
 function assignFamilies(
@@ -371,7 +383,7 @@ export function adviseGunBuild(
   const weaponTags = strings(gun.weapon.compatibilityTags);
   const owned = ownedModRanks(gun.inventory);
   const candidates: Candidate[] = [];
-  const keys = new Map<string, [string, string]>();
+  const keys = new Map<string, string[]>();
   for (const entry of data.mods) {
     const rank = owned.get(entry.uniqueName);
     const upgrade = asRecord(data.upgrades[entry.uniqueName]);
