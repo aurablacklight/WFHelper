@@ -6,6 +6,7 @@ import { asRecord } from "../../config/shared/objectValidation";
 import { readPepDict, readPepExport, readWfcdItems } from "../bundledGameData";
 import { findBestGunBuild, type BuildCandidate } from "./gunBuildSearch";
 import type {
+  AdvisorFaction,
   DamageByType,
   DamageType,
   EvaluatedMod,
@@ -15,12 +16,14 @@ import type {
   GunBuildReview,
   GunCategory,
   GunConfigEvaluation,
+  GunStats,
   ModEffect,
   OwnedGunSummary,
   SavedGunConfig,
 } from "../../config/shared/buildAdvisorTypes";
 import { computeGunStats } from "./gunStats";
 import { parseArcaneRank } from "./arcaneEffects";
+import { versusFaction } from "./factions";
 import { parseModDescription, parseModStats } from "./modEffects";
 
 /** The @wfcd/items mod fields the advisor reads. */
@@ -258,6 +261,8 @@ function ownsWeapon(inventory: Record<string, unknown>, type: string): boolean {
 interface AdvisorOptions {
   /** Count "On Kill" and similar bonuses as active at full stacks. */
   assumeConditionals: boolean;
+  /** Rank on damage to this faction; leave out to rank on the raw number. */
+  faction?: AdvisorFaction | null;
 }
 
 // What experienced players assume when they compare builds.
@@ -432,6 +437,10 @@ export function evaluateGunConfig(
   // left-to-right, top-to-bottom order, and elements combine in arsenal order.
   const arsenalOrder = (slot: number): number => (slot < GUN_MOD_SLOTS ? -slot : slot);
   mods.sort((a, b) => arsenalOrder(a.slot) - arsenalOrder(b.slot));
+  const stats = computeGunStats(gun.base, [
+    ...mods.map((m) => m.effects),
+    ...(equippedArcane ? [equippedArcane.effects] : []),
+  ]);
 
   return {
     ok: true,
@@ -439,10 +448,8 @@ export function evaluateGunConfig(
     mods,
     arcane: equippedArcane,
     unrecognised,
-    stats: computeGunStats(gun.base, [
-      ...mods.map((m) => m.effects),
-      ...(equippedArcane ? [equippedArcane.effects] : []),
-    ]),
+    stats,
+    versus: options.faction ? versusFaction(stats, options.faction) : null,
   };
 }
 
@@ -475,13 +482,18 @@ export function adviseGunBuild(
   // An arcane changes which mods are worth a slot, so each owned one gets its
   // own search and the strongest whole build wins. No arcane is the baseline.
   let arcane: (RankedMod & { type: string }) | null = null;
-  let build = findBestGunBuild(base, candidates);
+  const faction = options.faction ?? null;
+  const score = faction
+    ? (stats: GunStats): number => versusFaction(stats, faction).burstDps
+    : undefined;
+  const valueOf = (stats: GunStats): number => (score ? score(stats) : stats.burstDps);
+  let build = findBestGunBuild(base, candidates, undefined, [], score);
   for (const type of modelledArcanes(gun.weapon)) {
     const rank = owned.get(type);
     const option = rank === undefined ? null : arcaneAtRank(type, rank, data, options);
     if (!option?.effects.length) continue;
-    const withArcane = findBestGunBuild(base, candidates, undefined, [option.effects]);
-    if (withArcane.stats.burstDps > build.stats.burstDps * (1 + MIN_ARCANE_GAIN)) {
+    const withArcane = findBestGunBuild(base, candidates, undefined, [option.effects], score);
+    if (valueOf(withArcane.stats) > valueOf(build.stats) * (1 + MIN_ARCANE_GAIN)) {
       build = withArcane;
       arcane = { type, ...option };
     }
@@ -489,9 +501,9 @@ export function adviseGunBuild(
 
   const chosenArcane = arcane as (RankedMod & { type: string }) | null;
   const arcaneEffects = chosenArcane ? [chosenArcane.effects] : [];
-  const total = build.stats.burstDps;
+  const total = valueOf(build.stats);
   const share = (rest: readonly (readonly ModEffect[])[]): number =>
-    total > 0 ? (total - computeGunStats(base, rest).burstDps) / total : 0;
+    total > 0 ? (total - valueOf(computeGunStats(base, rest))) / total : 0;
   const modEffects = (skip?: Candidate): (readonly ModEffect[])[] =>
     build.mods.filter((m) => m !== skip).map((m) => m.effects);
 
@@ -521,6 +533,7 @@ export function adviseGunBuild(
         }
       : null,
     stats: build.stats,
+    versus: faction ? versusFaction(build.stats, faction) : null,
     unmodded: computeGunStats(base, []),
   };
 }
@@ -585,6 +598,7 @@ export function reviewGun(
       arcane: evaluation.arcane,
       unrecognised: evaluation.unrecognised,
       stats: evaluation.stats,
+      versus: evaluation.versus,
     });
   });
   return { advice, configs };

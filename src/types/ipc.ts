@@ -18,7 +18,11 @@ import type {
   WfmUpdateOrderInput,
   WfmUserProfile,
 } from "./market.js";
-import type { GunBuildReview, OwnedGunSummary } from "../../config/shared/buildAdvisorTypes.js";
+import type {
+  AdvisorFaction,
+  GunBuildReview,
+  OwnedGunSummary,
+} from "../../config/shared/buildAdvisorTypes.js";
 import type { DropRow, DropSearchMode, DropSearchResult } from "../../config/shared/dropTypes.js";
 import type { SpawnNode } from "../../config/shared/spawnNodeTypes.js";
 import type {
@@ -639,7 +643,7 @@ export interface IpcInvokeMap {
     return: OwnedGunSummary[];
   };
   reviewGunBuild: {
-    args: [weaponType: string, assumeConditionals: boolean];
+    args: [weaponType: string, assumeConditionals: boolean, faction: AdvisorFaction | null];
     return: GunBuildReview;
   };
   getRivens: {

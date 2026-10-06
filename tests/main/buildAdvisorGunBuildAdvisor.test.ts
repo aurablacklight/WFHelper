@@ -334,6 +334,68 @@ describe("evaluateGunConfig", () => {
   });
 });
 
+describe("ranking against a faction", () => {
+  const elemental = (...types: string[]) =>
+    inventory({
+      Upgrades: [],
+      RawUpgrades: types.map((ItemType) => ({ ItemType, ItemCount: 1 })),
+    });
+
+  it("reports damage per second after the faction's weaknesses", () => {
+    const advice = adviseGunBuild(elemental(COLD, TOXIN), RIFLE, data, {
+      assumeConditionals: true,
+      faction: "corrupted",
+    });
+    if (!advice.ok) throw new Error(advice.reason);
+    // Impact 10, innate heat 30, and cold with toxin as 48 viral: 88 a hit.
+    expect(advice.stats.totalDamage).toBeCloseTo(88, 6);
+    // Viral is worth half again to Corrupted: 112 of 88.
+    expect(advice.versus?.faction).toBe("corrupted");
+    expect(advice.versus?.burstDps).toBeCloseTo((advice.stats.burstDps * 112) / 88, 6);
+  });
+
+  it("leaves the element a faction is weak to uncombined", () => {
+    const advice = adviseGunBuild(elemental(HEAT, COLD, TOXIN), RIFLE, data, {
+      assumeConditionals: true,
+      faction: "infested",
+    });
+    if (!advice.ok) throw new Error(advice.reason);
+    // Infested are weak to heat, so cold and toxin pair up and heat (24 from the
+    // mod plus 30 innate) stays single.
+    expect(advice.stats.damage.heat).toBeCloseTo(54, 6);
+    expect(advice.stats.damage.viral).toBeCloseTo(48, 6);
+    // The mods are listed in the order that produces that: heat last.
+    expect(advice.mods.map((m) => m.type).indexOf(HEAT)).toBe(2);
+  });
+
+  it("combines into the element a faction is weak to", () => {
+    const advice = adviseGunBuild(elemental(HEAT, COLD, TOXIN), RIFLE, data, {
+      assumeConditionals: true,
+      faction: "corrupted",
+    });
+    if (!advice.ok) throw new Error(advice.reason);
+    // Corrupted are weak to viral, and nothing else on offer is.
+    expect(advice.stats.damage.viral).toBeCloseTo(48, 6);
+  });
+
+  it("reports no faction figures when none is chosen", () => {
+    const advice = adviseGunBuild(elemental(COLD, TOXIN), RIFLE, data);
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.versus).toBeNull();
+  });
+
+  it("gives saved configs the same faction figures for comparison", () => {
+    const owned = inventory({
+      LongGuns: [{ ItemId: id(100), ItemType: RIFLE, Configs: [{ Upgrades: [COLD, TOXIN] }] }],
+    });
+    const review = reviewGun(owned, RIFLE, data, { assumeConditionals: true, faction: "murmur" });
+    // The Murmur resist viral: 48 at half value, 40 at face value, of 88.
+    const config = review.configs[0];
+    expect(config.versus?.faction).toBe("murmur");
+    expect(config.versus?.burstDps).toBeCloseTo((config.stats.burstDps * 64) / 88, 6);
+  });
+});
+
 describe("weapon arcanes", () => {
   const withArcane = (arcane: string, rank = 1) =>
     inventory({

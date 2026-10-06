@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { findBestGunBuild, type BuildCandidate } from "../../services/buildAdvisor/gunBuildSearch";
-import type { GunBaseStats, ModEffect } from "../../config/shared/buildAdvisorTypes";
+import type { GunBaseStats, GunStats, ModEffect } from "../../config/shared/buildAdvisorTypes";
 
 const gun: GunBaseStats = {
   damage: { impact: 100 },
@@ -74,6 +74,29 @@ describe("findBestGunBuild", () => {
     expect(ids(build.mods)).toEqual(["multishot"]);
     // 100 * 4.6 damage * 1.9 pellets * 1.1 average crit.
     expect(build.stats.burstDps).toBeCloseTo(961.4, 6);
+  });
+
+  it("orders elemental mods so the pair the score rewards is the one that combines", () => {
+    const element = (damageType: "heat" | "cold" | "toxin"): ModEffect[] => [
+      { stat: "typedDamage", damageType, value: 1 },
+    ];
+    const candidates = [
+      mod("heat", element("heat")),
+      mod("cold", element("cold")),
+      mod("toxin", element("toxin")),
+    ];
+    // Viral is worth half again; every other type is worth its face value.
+    const score = (stats: GunStats): number => stats.totalDamage + 0.5 * (stats.damage.viral ?? 0);
+
+    const build = findBestGunBuild(gun, candidates, 3, [], score);
+
+    // Cold and toxin must sit next to each other, with heat left over.
+    expect(build.stats.damage.viral).toBeCloseTo(200, 6);
+    expect(build.stats.damage.heat).toBeCloseTo(100, 6);
+    expect(build.stats.damage.blast).toBeUndefined();
+    expect(build.stats.damage.gas).toBeUndefined();
+    // The returned order is the one that produces those stats.
+    expect(build.mods.map((m) => m.id).indexOf("heat")).toBe(2);
   });
 
   it("swaps out an early pick when a pair of later ones is stronger together", () => {

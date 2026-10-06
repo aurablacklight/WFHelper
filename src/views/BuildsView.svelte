@@ -7,6 +7,12 @@
   import SearchBox from "../components/SearchBox.svelte";
   import ThemedButton from "../components/ThemedButton.svelte";
   import ThemedPanel from "../components/ThemedPanel.svelte";
+  import ThemedSelect from "../components/ThemedSelect.svelte";
+  import {
+    ADVISOR_FACTIONS,
+    type AdvisorFaction,
+    type FactionDps,
+  } from "../../config/shared/buildAdvisorTypes.js";
   import type {
     DamageType,
     GunBuildReview,
@@ -37,10 +43,24 @@
     { type: "corrosive", labelKey: "pt.element.corrosive" },
   ];
 
+  const FACTION_LABELS: Record<AdvisorFaction, MessageKey> = {
+    grineer: "builds.faction.grineer",
+    corpus: "builds.faction.corpus",
+    infested: "builds.faction.infested",
+    corrupted: "builds.faction.corrupted",
+    sentient: "builds.faction.sentient",
+    narmer: "builds.faction.narmer",
+    murmur: "builds.faction.murmur",
+    scaldra: "builds.faction.scaldra",
+    techrot: "builds.faction.techrot",
+    anarchs: "builds.faction.anarchs",
+  };
+
   interface StatColumn {
     key: string;
     label: string;
     stats: GunStats;
+    versus: FactionDps | null;
     recommended: boolean;
   }
 
@@ -57,6 +77,9 @@
   let loadingReview = $state(false);
   // On by default: players compare builds with their stacks running.
   let stacksUp = $state(true);
+  // The select holds "" for no target.
+  let targetValue = $state("");
+  const target = $derived(ADVISOR_FACTIONS.find((faction) => faction === targetValue) ?? null);
 
   const inv = $derived($inventoryData);
   const db = $derived($itemDb);
@@ -90,13 +113,14 @@
   $effect(() => {
     const type = selectedType;
     const assume = stacksUp;
+    const faction = target;
     if (!type || !inv) {
       review = null;
       return;
     }
     let stale = false;
     loadingReview = true;
-    void invoke("reviewGunBuild", type, assume)
+    void invoke("reviewGunBuild", type, assume, faction)
       .then((result) => {
         if (!stale) review = result;
       })
@@ -129,6 +153,7 @@
         key: "recommended",
         label: $tr("common.recommended"),
         stats: advice.stats,
+        versus: advice.versus,
         recommended: true,
       },
       ...review.configs.map((config) => ({
@@ -137,6 +162,7 @@
           config.name ??
           $tr("builds.config", { letter: String.fromCharCode("A".charCodeAt(0) + config.index) }),
         stats: config.stats,
+        versus: config.versus,
         recommended: false,
       })),
     ];
@@ -221,6 +247,25 @@
         label: $tr("builds.stat.sustainedDps"),
         values: each((stats) => formatNumber(Math.round(stats.sustainedDps), $locale)),
       },
+      // Present only while a target faction is chosen.
+      ...(columns.every((column) => column.versus)
+        ? [
+            {
+              key: "burstVs",
+              label: $tr("builds.stat.burstVs"),
+              values: columns.map((column) =>
+                formatNumber(Math.round(column.versus?.burstDps ?? 0), $locale),
+              ),
+            },
+            {
+              key: "sustainedVs",
+              label: $tr("builds.stat.sustainedVs"),
+              values: columns.map((column) =>
+                formatNumber(Math.round(column.versus?.sustainedDps ?? 0), $locale),
+              ),
+            },
+          ]
+        : []),
     ];
   });
 
@@ -234,6 +279,20 @@
     <h2>{$tr("common.builds")}</h2>
     <span class="text-xs text-text-muted">{$tr("builds.hint")}</span>
     <div class="ml-auto flex items-center gap-2">
+      <label
+        class="flex items-center gap-1.5 text-xs text-text-muted"
+        title={$tr("builds.targetHint")}
+      >
+        {$tr("builds.target")}
+        <ThemedSelect bind:value={targetValue}>
+          <option value="">{$tr("common.none")}</option>
+          {#each ADVISOR_FACTIONS as faction (faction)}
+            <option value={faction} data-builds-target={faction}>
+              {$tr(FACTION_LABELS[faction])}
+            </option>
+          {/each}
+        </ThemedSelect>
+      </label>
       <ThemedButton
         active={stacksUp}
         title={$tr("builds.stacksUpHint")}

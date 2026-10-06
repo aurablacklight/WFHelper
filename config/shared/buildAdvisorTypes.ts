@@ -88,6 +88,8 @@ export type GunBuildAdvice =
       /** The weapon arcane to equip, or null when none owned adds burst damage. */
       arcane: AdvisedMod | null;
       stats: GunStats;
+      /** Set when the build was ranked against a faction. */
+      versus: FactionDps | null;
       unmodded: GunStats;
     }
   | { ok: false; reason: GunBuildAdviceFailure };
@@ -103,6 +105,7 @@ export type GunConfigEvaluation =
       /** Equipped things with no usable data: rivens, other arcanes, unknown ids. */
       unrecognised: string[];
       stats: GunStats;
+      versus: FactionDps | null;
     }
   | { ok: false; reason: GunBuildAdviceFailure | "no-such-config" };
 
@@ -124,10 +127,34 @@ export interface SavedGunConfig {
   arcane: EvaluatedMod | null;
   unrecognised: string[];
   stats: GunStats;
+  versus: FactionDps | null;
 }
 
 export interface GunBuildReview {
   advice: GunBuildAdvice;
   /** The gun's saved configs that have at least one mod, for comparison. */
   configs: SavedGunConfig[];
+}
+
+/** The enemy factions a build can be ranked against. */
+export const ADVISOR_FACTIONS = [
+  "grineer",
+  "corpus",
+  "infested",
+  "corrupted",
+  "sentient",
+  "narmer",
+  "murmur",
+  "scaldra",
+  "techrot",
+  "anarchs",
+] as const;
+
+export type AdvisorFaction = (typeof ADVISOR_FACTIONS)[number];
+
+/** Damage per second after the faction's weaknesses and resistances. */
+export interface FactionDps {
+  faction: AdvisorFaction;
+  burstDps: number;
+  sustainedDps: number;
 }

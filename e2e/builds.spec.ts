@@ -108,6 +108,22 @@ test.describe("Build advisor", () => {
     await expect(page.locator(`[data-builds-mod="${GALVANIZED_DIFFUSION}"]`)).toBeVisible();
   });
 
+  test("choosing a target adds damage figures against that faction", async () => {
+    await page.locator(`[data-builds-gun="${LEX_PRIME}"]`).click();
+    await expect(stat("burstDps")).toHaveCount(3);
+    await expect(stat("burstVs")).toHaveCount(0);
+
+    const target = page.locator("[data-builds-view] select");
+    await target.selectOption("corpus");
+
+    // One label and one figure per column, for the recommendation and config A.
+    await expect(stat("burstVs")).toHaveCount(3);
+    await expect(stat("sustainedVs")).toHaveCount(3);
+
+    await target.selectOption("");
+    await expect(stat("burstVs")).toHaveCount(0);
+  });
+
   test("a weapon the advisor cannot build for says why", async () => {
     await page.locator(`[data-builds-gun="${UNKNOWN_BOW}"]`).click();
     await expect(page.locator("[data-builds-unsupported]")).toBeVisible();

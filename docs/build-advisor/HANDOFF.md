@@ -93,6 +93,17 @@ page:
   closes the Trumna Prime reload gap (3.08s computed, 3.1s in the arsenal). Not
   checked: whether the weapon has an arcane adapter fitted. Every other arcane is
   still listed as unrecognised.
+- Done after the research: ranking against a faction, the first piece of an
+  enemy model. The Builds view has a Target selector with ten factions. With one
+  chosen, each damage type is worth 1.5, 1 or 0.5 by the faction's weaknesses
+  and resistances (the wiki's Damage overview table, in
+  `services/buildAdvisor/factions.ts`), builds are ranked on that, and the
+  search also orders elemental mods so the best pair combines. The search adds
+  two elemental mods at once when neither helps alone, because a third element
+  changes which ones combine. Not modelled yet: armour and armour strip (armour
+  scales every type alike, so it does not change this ranking), shields,
+  Overguard, every status effect, sub-factions and per-enemy exceptions. Until
+  statuses exist, Viral and Slash builds are undervalued against armour.
 - The bundled `@wfcd/items` text writes a line break inside a stat line as a
   literal backslash and n, not a newline. The parser accepts both.
 
