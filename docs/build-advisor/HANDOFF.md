@@ -155,6 +155,15 @@ page:
   through, zoom and so on) as not counted. A Riven costs 10 capacity plus its
   rank, takes one slot, and is read on saved configs too. Riven Splicing
   (2026-10-07) may add stat types this mapping does not know.
+- Done after the research: Kuva, Tenet and Coda bonus elements. The inventory
+  stores the bonus on the weapon as `UpgradeFingerprint.buffs[0]`: a tag
+  (`InnateHeatDamage`, `InnateRadDamage` and so on) and an integer up to
+  `0x3FFFFFFF`. The bonus is added as base damage of that element, so mods scale
+  it and it combines with the weapon's own element. The Builds view shows it
+  beside the weapon name. **Unverified:** the integer is read as a straight line
+  from 25% to 60% (the wiki's range). On the test inventory that gives Kuva Brakk
+  44.0% Heat, Tenet Arca Plasmor 28.6% Toxin and Coda Sporothrix 60.0%
+  Radiation; compare one with the arsenal to confirm.
 - The bundled `@wfcd/items` text writes a line break inside a stat line as a
   literal backslash and n, not a newline. The parser accepts both.
 

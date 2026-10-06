@@ -336,6 +336,62 @@ describe("evaluateGunConfig", () => {
   });
 });
 
+describe("Kuva, Tenet and Coda bonus elements", () => {
+  // The inventory stores the bonus as a tag and an integer out of 0x3FFFFFFF.
+  const MAX_ROLL = 0x3fffffff;
+  const lichGun = (Tag: string, Value: number) =>
+    inventory({
+      LongGuns: [
+        {
+          ItemId: id(100),
+          ItemType: RIFLE,
+          UpgradeType: "/Lotus/Weapons/Grineer/KuvaLich/Upgrades/InnateDamageRandomMod",
+          UpgradeFingerprint: JSON.stringify({ buffs: [{ Tag, Value }] }),
+        },
+      ],
+      Upgrades: [],
+      RawUpgrades: [],
+    });
+  const unmodded = (owned: unknown) => {
+    const advice = adviseGunBuild(owned, RIFLE, data);
+    if (!advice.ok) throw new Error(advice.reason);
+    return advice;
+  };
+
+  it("adds the bonus as base damage of its element, from 25% to 60%", () => {
+    // Base 40. The top roll is 60%: 24 magnetic.
+    const top = unmodded(lichGun("InnateMagDamage", MAX_ROLL));
+    expect(top.stats.damage.magnetic).toBeCloseTo(24, 4);
+    expect(top.weapon.bonus).toEqual({ damageType: "magnetic", value: expect.closeTo(0.6, 6) });
+    // The bottom roll is 25%: 10 magnetic.
+    expect(unmodded(lichGun("InnateMagDamage", 0)).stats.damage.magnetic).toBeCloseTo(10, 4);
+  });
+
+  it("combines a bonus element with the weapon's own element", () => {
+    // 60% toxin is 24, and the rifle's 30 innate heat pairs with it as gas.
+    const advice = unmodded(lichGun("InnateToxinDamage", MAX_ROLL));
+    expect(advice.stats.damage.gas).toBeCloseTo(54, 4);
+    expect(advice.stats.damage.heat).toBeUndefined();
+  });
+
+  it("scales elemental mods from base damage that includes the bonus", () => {
+    const owned = lichGun("InnateMagDamage", MAX_ROLL);
+    const advice = adviseGunBuild(
+      { ...owned, RawUpgrades: [{ ItemType: COLD, ItemCount: 1 }] },
+      RIFLE,
+      data,
+    );
+    if (!advice.ok) throw new Error(advice.reason);
+    // Base is now 64, so +60% cold is 38.4; it pairs with the 30 innate heat.
+    expect(advice.stats.damage.blast).toBeCloseTo(68.4, 4);
+  });
+
+  it("reports no bonus for an ordinary weapon or an unknown tag", () => {
+    expect(unmodded(inventory({ Upgrades: [], RawUpgrades: [] })).weapon.bonus).toBeNull();
+    expect(unmodded(lichGun("InnateMysteryDamage", MAX_ROLL)).weapon.bonus).toBeNull();
+  });
+});
+
 describe("Rivens", () => {
   const critRiven = {
     itemId: id(4).$oid,
@@ -638,7 +694,7 @@ describe("adviseGunBuild", () => {
     const advice = adviseGunBuild(inventory(), RIFLE, data);
     if (!advice.ok) throw new Error(advice.reason);
 
-    expect(advice.weapon).toEqual({ type: RIFLE, name: "Fixture Rifle" });
+    expect(advice.weapon).toEqual({ type: RIFLE, name: "Fixture Rifle", bonus: null });
     // The galvanized multishot mod at full stacks (+80% and 5 x +30%) over the
     // plain +90% one of the same family, then the rank 2 copy of the damage mod.
     expect(advice.mods.map((m) => [m.name, m.rank, m.maxRank])).toEqual([

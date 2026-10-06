@@ -8,6 +8,7 @@ import { getRivenFamilySlug, getWeaponDisposition } from "../rivenData";
 import { decodeAllRivens } from "../rivenFingerprint";
 import { findBestGunBuild, type BuildCandidate } from "./gunBuildSearch";
 import type {
+  AdvisedWeapon,
   AdvisorFaction,
   DamageByType,
   DamageType,
@@ -392,6 +393,7 @@ function arcaneAtRank(
 }
 
 interface OwnedGun {
+  bonus: AdvisedWeapon["bonus"];
   inventory: Record<string, unknown>;
   weapon: Record<string, unknown>;
   name: string;
@@ -408,13 +410,15 @@ function ownedGun(
   if (!inventory || !ownsWeapon(inventory, weaponType)) return "weapon-not-owned";
   const weapon = asRecord(data.weapons[weaponType]);
   if (!weapon) return "unknown-weapon";
-  const base = baseStats(weapon);
-  if (!base) return "unsupported-weapon";
+  const listed = baseStats(weapon);
+  if (!listed) return "unsupported-weapon";
+  const bonus = progenitorBonus(findGun(inventory, weaponType));
+  const base = bonus ? withBonusElement(listed, bonus) : listed;
   const classes = weaponClasses(weaponType, weapon, data.weapons);
   // Crossbows holster as rifles but sit under the bow classes.
   if ([...classes].some((c) => c.includes(BOW_CLASS_DIR))) return "unsupported-weapon";
   const name = typeof weapon.name === "string" ? data.strings[weapon.name] : undefined;
-  return { inventory, weapon, name: name ?? weaponType, base, classes };
+  return { inventory, weapon, name: name ?? weaponType, base, classes, bonus };
 }
 
 const INVENTORY_ITEM_ID = /^[0-9a-f]{24}$/i;
@@ -488,7 +492,7 @@ export function evaluateGunConfig(
 
   return {
     ok: true,
-    weapon: { type: weaponType, name: gun.name },
+    weapon: { type: weaponType, name: gun.name, bonus: gun.bonus },
     mods,
     arcane: equippedArcane,
     unrecognised,
@@ -581,7 +585,7 @@ export function adviseGunBuild(
 
   return {
     ok: true,
-    weapon: { type: weaponType, name: gun.name },
+    weapon: { type: weaponType, name: gun.name, bonus: gun.bonus },
     mods: build.mods.map((m) => ({
       type: m.id,
       name: m.name,
@@ -789,4 +793,57 @@ function rivensFor(gun: OwnedGun, data: AdvisorGameData): RivenMod[] {
     });
   }
   return fitting;
+}
+
+// The tag of the bonus element a Kuva, Tenet or Coda weapon rolled.
+const BONUS_ELEMENT_BY_TAG: Readonly<Record<string, DamageType>> = {
+  InnateImpactDamage: "impact",
+  InnateHeatDamage: "heat",
+  InnateFreezeDamage: "cold",
+  InnateElectricityDamage: "electricity",
+  InnateToxinDamage: "toxin",
+  InnateRadDamage: "radiation",
+  InnateMagDamage: "magnetic",
+};
+const BONUS_UPGRADE = "InnateDamageRandomMod";
+const BONUS_MIN = 0.25;
+const BONUS_MAX = 0.6;
+const BONUS_ROLL_MAX = 0x3fffffff;
+
+/** The bonus element stored on the weapon. The 25% to 60% range is the wiki's;
+ *  reading the stored integer as a straight line across it is unverified. */
+function progenitorBonus(entry: unknown): AdvisedWeapon["bonus"] {
+  const gun = asRecord(entry);
+  if (typeof gun?.UpgradeType !== "string" || !gun.UpgradeType.endsWith(BONUS_UPGRADE)) return null;
+  if (typeof gun.UpgradeFingerprint !== "string" || gun.UpgradeFingerprint.length > 16_384) {
+    return null;
+  }
+  try {
+    const buffs: unknown = asRecord(JSON.parse(gun.UpgradeFingerprint))?.buffs;
+    const buff = Array.isArray(buffs) ? asRecord(buffs[0]) : null;
+    const damageType = typeof buff?.Tag === "string" ? BONUS_ELEMENT_BY_TAG[buff.Tag] : undefined;
+    const roll = buff?.Value;
+    if (!damageType || typeof roll !== "number" || roll < 0 || roll > BONUS_ROLL_MAX) return null;
+    return { damageType, value: BONUS_MIN + (BONUS_MAX - BONUS_MIN) * (roll / BONUS_ROLL_MAX) };
+  } catch {
+    return null;
+  }
+}
+
+/** The bonus counts as base damage, so mods scale it like the weapon's own. */
+function withBonusElement(
+  base: GunBaseStats,
+  bonus: NonNullable<AdvisedWeapon["bonus"]>,
+): GunBaseStats {
+  let total = 0;
+  for (const amount of Object.values(base.damage)) total += amount ?? 0;
+  const added = { ...base.damage };
+  added[bonus.damageType] = (added[bonus.damageType] ?? 0) + total * bonus.value;
+  // Kept in DE's order, which is also the order two innate elements combine in.
+  const damage: DamageByType = {};
+  for (const type of DAMAGE_TYPE_ORDER) {
+    const amount = added[type];
+    if (amount !== undefined) damage[type] = amount;
+  }
+  return { ...base, damage };
 }

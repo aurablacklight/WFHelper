@@ -459,6 +459,7 @@
   "builds.fitCapacity": "符合容量",
   "builds.fitCapacityHint": "只推荐符合武器当前容量和极性的配装。关闭后显示不受此限制的最佳配装。",
   "builds.capacity": "容量 {used}/{total}",
+  "builds.bonus": "{percent}% {element}加成",
   "builds.caveat": "目标数值是对单个重型单位持续射击的估算，计入护甲和异常状态，但不含护盾、过量护盾和叠层时间。裂罅 Mod、套装加成、Mod 容量、极性以及大多数赋能均未计入。",
   "builds.stacksUp": "叠层全满",
   "builds.stacksUpHint": "按满层计算“击杀时”等条件加成。关闭后仅按军械库数值排序。",

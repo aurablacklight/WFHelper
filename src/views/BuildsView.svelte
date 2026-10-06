@@ -393,6 +393,18 @@
           <ThemedPanel className="flex flex-col gap-2 p-3">
             <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <h3 class="m-0 text-sm font-semibold text-text-primary">{advice.weapon.name}</h3>
+              {#if advice.weapon.bonus}
+                {@const bonus = advice.weapon.bonus}
+                <span class="text-xs text-text-secondary" data-builds-bonus>
+                  {$tr("builds.bonus", {
+                    percent: decimal(bonus.value * 100, 1),
+                    element: $tr(
+                      DAMAGE_ROWS.find((row) => row.type === bonus.damageType)?.labelKey ??
+                        "pt.element.impact",
+                    ),
+                  })}
+                </span>
+              {/if}
               <span class="text-xs text-text-muted">{$tr("builds.recommendedTitle")}</span>
               {#if advice.capacity}
                 <span class="ml-auto text-xs text-text-secondary" data-builds-capacity>

@@ -87,7 +87,7 @@ export type GunBuildAdviceFailure = "unknown-weapon" | "unsupported-weapon" | "w
 export type GunBuildAdvice =
   | {
       ok: true;
-      weapon: { type: string; name: string };
+      weapon: AdvisedWeapon;
       mods: AdvisedMod[];
       /** The weapon arcane to equip, or null when none owned adds burst damage. */
       arcane: AdvisedMod | null;
@@ -103,7 +103,7 @@ export type GunBuildAdvice =
 export type GunConfigEvaluation =
   | {
       ok: true;
-      weapon: { type: string; name: string };
+      weapon: AdvisedWeapon;
       /** In arsenal order. */
       mods: EvaluatedMod[];
       /** The equipped weapon arcane, when it is one the calculator models. */
@@ -171,4 +171,11 @@ export interface FactionDps {
   viralMultiplier: number;
   /** Share of damage that gets through armour, after Corrosive and Heat strip. */
   armourMultiplier: number;
+}
+
+export interface AdvisedWeapon {
+  type: string;
+  name: string;
+  /** A Kuva, Tenet or Coda weapon's bonus element, as a share of base damage. */
+  bonus: { damageType: DamageType; value: number } | null;
 }
