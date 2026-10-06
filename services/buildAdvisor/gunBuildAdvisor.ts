@@ -4,6 +4,8 @@
 import { unwrapInventoryPayload } from "../../config/shared/inventoryPayload";
 import { asRecord } from "../../config/shared/objectValidation";
 import { readPepDict, readPepExport, readWfcdItems } from "../bundledGameData";
+import { getRivenFamilySlug, getWeaponDisposition } from "../rivenData";
+import { decodeAllRivens } from "../rivenFingerprint";
 import { findBestGunBuild, type BuildCandidate } from "./gunBuildSearch";
 import type {
   AdvisorFaction,
@@ -25,6 +27,7 @@ import { computeGunStats } from "./gunStats";
 import { parseArcaneRank } from "./arcaneEffects";
 
 import { minimumDrain, type SlottedMod } from "./modCapacity";
+import { rivenEffects } from "./rivenEffects";
 import { targetDps } from "./statusModel";
 import { parseModDescription, parseModStats } from "./modEffects";
 
@@ -36,7 +39,25 @@ interface AdvisorModEntry {
   levelStats?: ReadonlyArray<{ stats?: readonly string[] }>;
 }
 
+/** An unveiled Riven as the app's decoder reports it. */
+interface AdvisorRiven {
+  itemId: string;
+  /** The weapon the Riven names, which may be a variant's base weapon. */
+  weaponName: string;
+  name: string;
+  rank: number;
+  maxRank: number;
+  polarity: string;
+  stats: Parameters<typeof rivenEffects>[0];
+}
+
 export interface AdvisorGameData {
+  /** The app's Riven decoder and its weapon family and disposition tables. */
+  rivens: {
+    owned: (inventory: Record<string, unknown>) => readonly AdvisorRiven[];
+    family: (weaponName: string) => string;
+    disposition: (weaponName: string) => number | null;
+  };
   /** Built-in mod slot polarities by weapon, as @wfcd/items names them. */
   polarities: Readonly<Record<string, readonly string[]>>;
   /** ExportArcanes from warframe-public-export-plus. */
@@ -82,6 +103,20 @@ let bundled: AdvisorGameData | null = null;
 
 function bundledGameData(): AdvisorGameData {
   bundled ??= {
+    rivens: {
+      owned: (inventory) =>
+        decodeAllRivens(inventory).unveiled.map((riven) => ({
+          itemId: riven.itemId,
+          weaponName: riven.weaponName,
+          name: riven.rivenName,
+          rank: riven.currentRank,
+          maxRank: riven.maxRank,
+          polarity: riven.polarity,
+          stats: riven.stats,
+        })),
+      family: getRivenFamilySlug,
+      disposition: getWeaponDisposition,
+    },
     polarities: bundledPolarities(),
     arcanes: readPepExport("ExportArcanes") ?? {},
     weapons: readPepExport("ExportWeapons") ?? {},
@@ -415,6 +450,7 @@ export function evaluateGunConfig(
     }
   }
   const byType = new Map(data.mods.map((mod) => [mod.uniqueName, mod]));
+  const rivens = new Map(rivensFor(gun, data).map((riven) => [riven.type, riven]));
 
   const mods: EvaluatedMod[] = [];
   let arcane: EvaluatedMod | null = null;
@@ -435,7 +471,8 @@ export function evaluateGunConfig(
       }
     }
     const known = type ? byType.get(type) : undefined;
-    const mod = known ? modAtRank(known, rank, data, options) : null;
+    const riven = INVENTORY_ITEM_ID.test(ref) ? rivens.get(`${RIVEN_ID}${ref}`) : undefined;
+    const mod = riven ?? (known ? modAtRank(known, rank, data, options) : null);
     if (type && mod) mods.push({ slot, type, ...mod });
     else unrecognised.push(type ?? ref);
   });
@@ -491,6 +528,16 @@ export function adviseGunBuild(
     keys.set(entry.uniqueName, familyKeys(entry.uniqueName, upgrade.compat as string, mod.name));
   }
   assignFamilies(candidates, keys);
+  for (const riven of rivensFor(gun, data)) {
+    if (riven.effects.length === 0) continue;
+    candidates.push({
+      id: riven.type,
+      // A weapon holds one Riven.
+      family: "riven",
+      ...riven,
+      drain: RIVEN_BASE_DRAIN + riven.rank,
+    });
+  }
 
   // An arcane changes which mods are worth a slot, so each owned one gets its
   // own search and the strongest whole build wins. No arcane is the baseline.
@@ -707,4 +754,39 @@ function weaponCapacity(
     polarities: polarities.slice(0, GUN_MOD_SLOTS),
     arcaneSlot: (features & FEATURE_ARCANE_ADAPTER) !== 0 || arcaneEquipped,
   };
+}
+
+const RIVEN_ID = "riven:";
+const RIVEN_BASE_DRAIN = 10;
+
+interface RivenMod extends RankedMod {
+  /** "riven:" and the Riven's inventory id, since Rivens share item types. */
+  type: string;
+  polarity: string | null;
+}
+
+/** The owned Rivens that fit this gun: any Riven for a weapon of its family,
+ *  with its stats rescaled from the named weapon's disposition to this one's. */
+function rivensFor(gun: OwnedGun, data: AdvisorGameData): RivenMod[] {
+  const family = data.rivens.family(gun.name);
+  const disposition = data.rivens.disposition(gun.name);
+  const fitting: RivenMod[] = [];
+  for (const riven of data.rivens.owned(gun.inventory)) {
+    if (data.rivens.family(riven.weaponName) !== family) continue;
+    const named = data.rivens.disposition(riven.weaponName);
+    const scale = disposition && named ? disposition / named : 1;
+    const { effects, ignored } = rivenEffects(riven.stats, scale);
+    fitting.push({
+      type: `${RIVEN_ID}${riven.itemId}`,
+      name: riven.name,
+      rank: riven.rank,
+      maxRank: riven.maxRank,
+      effects,
+      ignored,
+      assumed: [],
+      unmodelledRule: false,
+      polarity: riven.polarity || null,
+    });
+  }
+  return fitting;
 }

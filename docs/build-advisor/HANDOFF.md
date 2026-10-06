@@ -146,6 +146,15 @@ page:
   - Under a capacity limit the search also trades any two mods for any two
     others, since one costly pick can block a cheaper pair worth more. A full
     recommendation takes up to about 0.6 s.
+- Done after the research: Rivens. An unveiled Riven is offered to every owned
+  gun in its weapon family (a Furis Riven fits every Furis variant), with its
+  stats rescaled from the named weapon's disposition to the variant's. The
+  numbers come from the app's own decoder (`services/rivenFingerprint.ts`);
+  `services/buildAdvisor/rivenEffects.ts` maps its stat tags to the bonuses the
+  calculator models and lists the rest (faction damage, status duration, punch
+  through, zoom and so on) as not counted. A Riven costs 10 capacity plus its
+  rank, takes one slot, and is read on saved configs too. Riven Splicing
+  (2026-10-07) may add stat types this mapping does not know.
 - The bundled `@wfcd/items` text writes a line break inside a stat line as a
   literal backslash and n, not a newline. The parser accepts both.
 

@@ -70,6 +70,7 @@ const ranks = (...percents: number[]) => percents.map((p) => ({ stats: [`+${p}% 
 
 const data: AdvisorGameData = {
   polarities: {},
+  rivens: { owned: () => [], family: (name) => name, disposition: () => 1 },
   arcanes: {
     [MERCILESS]: { name: "/Lotus/Language/Fixture/MercilessName", levelStats: mercilessRanks },
     [SECONDARY_MERCILESS]: {
@@ -332,6 +333,74 @@ describe("evaluateGunConfig", () => {
       ok: false,
       reason: "no-such-config",
     });
+  });
+});
+
+describe("Rivens", () => {
+  const critRiven = {
+    itemId: id(4).$oid,
+    weaponName: "Fixture Rifle Mk0",
+    name: "Fixture Rifle Critacan",
+    rank: 8,
+    maxRank: 8,
+    polarity: "AP_ATTACK",
+    stats: [
+      { tag: "WeaponCritChanceMod", name: "Critical Chance", displayValue: 200, multiplier: false },
+      { tag: "WeaponZoomFovMod", name: "Zoom", displayValue: -5, multiplier: false },
+    ],
+  };
+  // The Riven names the base weapon; the owned rifle is a variant of it with
+  // half the disposition.
+  const withRiven: AdvisorGameData = {
+    ...data,
+    rivens: {
+      owned: () => [critRiven],
+      family: (name) => name.replace(/ Mk0$/, ""),
+      disposition: (name) => (name === "Fixture Rifle" ? 0.5 : 1),
+    },
+  };
+  const bare = (extra: Record<string, unknown> = {}) =>
+    inventory({ Upgrades: [ranked(4, RIVEN, 8)], RawUpgrades: [], ...extra });
+
+  it("offers a Riven to every weapon in its family, at that weapon's disposition", () => {
+    const advice = adviseGunBuild(bare(), RIFLE, withRiven);
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.mods.map((m) => [m.name, m.rank, m.maxRank])).toEqual([
+      ["Fixture Rifle Critacan", 8, 8],
+    ]);
+    // +200% at half the disposition is +100%: 0.2 becomes 0.4.
+    expect(advice.stats.criticalChance).toBeCloseTo(0.4, 6);
+    expect(advice.mods[0].ignored).toEqual(["-2.5% Zoom"]);
+  });
+
+  it("does not offer a Riven for another weapon", () => {
+    const other = {
+      ...withRiven,
+      rivens: { ...withRiven.rivens, owned: () => [{ ...critRiven, weaponName: "Other Gun" }] },
+    };
+    const advice = adviseGunBuild(bare(), RIFLE, other);
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.mods).toEqual([]);
+  });
+
+  it("charges a Riven ten capacity plus its rank", () => {
+    const owned = bare({
+      LongGuns: [{ ItemId: id(100), ItemType: RIFLE, XP: 450_000, Features: 0 }],
+    });
+    const advice = adviseGunBuild(owned, RIFLE, withRiven);
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.capacity).toEqual({ used: 18, total: 30 });
+  });
+
+  it("counts a Riven equipped on a saved config", () => {
+    const owned = bare({
+      LongGuns: [{ ItemId: id(100), ItemType: RIFLE, Configs: [{ Upgrades: [id(4).$oid] }] }],
+    });
+    const result = evaluateGunConfig(owned, RIFLE, 0, withRiven);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.mods.map((m) => m.name)).toEqual(["Fixture Rifle Critacan"]);
+    expect(result.unrecognised).toEqual([]);
+    expect(result.stats.criticalChance).toBeCloseTo(0.4, 6);
   });
 });
 
