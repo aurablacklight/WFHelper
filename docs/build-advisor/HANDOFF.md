@@ -55,6 +55,31 @@ In rough order of how much they change a recommendation:
    the test inventory that was 30 of 85 guns, plus 5 missing from the game data.
 8. The search is greedy with single swaps and can miss the best set.
 
+## Research (added later on 2026-10-05)
+
+A research pass on how the game works for build purposes is in
+`reports/Warframe weapon build mechanics.md`, with an independent review beside
+it and the eight sets of source notes under `research_notes/`. Read the
+corrections block at the top of the report first. It supersedes parts of this
+page:
+
+- Radial damage is not missing from the bundled data. It is under
+  `behaviours[].projectile.explosiveAttack` in `warframe-public-export-plus`
+  and in `attacks[]` in `@wfcd/items`; the advisor reads neither yet.
+- Set bonuses, arcanes, Riven stats, the Kuva/Tenet/Coda bonus element,
+  polarities and the exilus and arcane slot positions all have structured
+  sources. Mod effects per rank do not, so the text parser stays.
+- Conditional bonuses should be assumed up. A fully stacked Galvanized
+  multishot mod is +230% against +90% or +120% for the plain one.
+- Known bug: the advisor can recommend Critical Delay with Point Strike. The
+  wiki states that a corrupted crit chance mod cannot be equipped with its
+  standard counterpart (also Critical Deceleration with Blunderbuss, Creeping
+  Bullseye with Pistol Gambit). The family rule does not catch these.
+
+Creator coverage is thin: TheKengineer is well covered, Brozime is one older
+video plus three tables from his vault, and nothing from Tactical Potato could
+be read.
+
 ## Next steps, as discussed
 
 - "On Kill" stacks with a stacks-up toggle (item 1). Suggested first.
