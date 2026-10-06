@@ -232,7 +232,10 @@ describe("reviewGun", () => {
     });
     const review = reviewGun(owned, RIFLE, data);
     if (!review.advice.ok) throw new Error(review.advice.reason);
-    expect(review.advice.mods.map((m) => m.name)).toEqual(["Fixture Serration", "Fixture Chamber"]);
+    expect(review.advice.mods.map((m) => m.name)).toEqual([
+      "Galvanized Fixture Chamber",
+      "Fixture Serration",
+    ]);
     expect(review.configs.map((c) => [c.index, c.name, c.mods.map((m) => m.name)])).toEqual([
       [1, "Boss", ["Fixture Serration"]],
     ]);
@@ -312,17 +315,17 @@ describe("adviseGunBuild", () => {
     if (!advice.ok) throw new Error(advice.reason);
 
     expect(advice.weapon).toEqual({ type: RIFLE, name: "Fixture Rifle" });
-    // The rank 2 copy of the damage mod and the plain multishot mod: the
-    // galvanized one is the same family and only +80% without its stacks.
+    // The galvanized multishot mod at full stacks (+80% and 5 x +30%) over the
+    // plain +90% one of the same family, then the rank 2 copy of the damage mod.
     expect(advice.mods.map((m) => [m.name, m.rank, m.maxRank])).toEqual([
+      ["Galvanized Fixture Chamber", 0, 0],
       ["Fixture Serration", 2, 2],
-      ["Fixture Chamber", 0, 0],
     ]);
     // Impact 10 and heat 30, both * 2.5.
     expect(advice.stats.damage.impact).toBeCloseTo(25, 6);
     expect(advice.stats.damage.heat).toBeCloseTo(75, 6);
-    // 100 damage * 1.9 pellets * 1.2 average crit * 5 shots a second.
-    expect(advice.stats.burstDps).toBeCloseTo(1140, 6);
+    // 100 damage * 3.3 pellets * 1.2 average crit * 5 shots a second.
+    expect(advice.stats.burstDps).toBeCloseTo(1980, 6);
     // 40 * 1.2 * 5 with nothing equipped.
     expect(advice.unmodded.burstDps).toBeCloseTo(240, 6);
   });
@@ -330,16 +333,31 @@ describe("adviseGunBuild", () => {
   it("says how much burst damage each mod is worth to the build", () => {
     const advice = adviseGunBuild(inventory(), RIFLE, data);
     if (!advice.ok) throw new Error(advice.reason);
-    // Without the damage mod 1140 falls to 456; without multishot, to 600.
-    expect(advice.mods[0].burstDpsShare).toBeCloseTo(0.6, 6);
-    expect(advice.mods[1].burstDpsShare).toBeCloseTo(540 / 1140, 6);
+    // Without multishot 1980 falls to 600; without the damage mod, to 792.
+    expect(advice.mods[0].burstDpsShare).toBeCloseTo(1380 / 1980, 6);
+    expect(advice.mods[1].burstDpsShare).toBeCloseTo(0.6, 6);
   });
 
-  it("reports the stat lines it could not use", () => {
-    const owned = inventory({ RawUpgrades: [] });
-    const advice = adviseGunBuild(owned, RIFLE, data);
+  it("names the conditional lines it counted at full stacks", () => {
+    const advice = adviseGunBuild(inventory(), RIFLE, data);
     if (!advice.ok) throw new Error(advice.reason);
     const galvanized = advice.mods.find((m) => m.type === MULTISHOT_GALVANIZED);
+    expect(galvanized?.assumed).toEqual(["On Kill:\n+30% Multishot for 20s. Stacks up to 5x."]);
+    expect(galvanized?.ignored).toEqual([]);
+  });
+
+  it("ranks on arsenal numbers alone when stacks are not assumed", () => {
+    const advice = adviseGunBuild(inventory(), RIFLE, data, { assumeConditionals: false });
+    if (!advice.ok) throw new Error(advice.reason);
+    // The galvanized mod is only +80% without its stacks, so the plain +90% wins.
+    expect(advice.mods.map((m) => m.name)).toEqual(["Fixture Serration", "Fixture Chamber"]);
+    // 100 damage * 1.9 pellets * 1.2 average crit * 5 shots a second.
+    expect(advice.stats.burstDps).toBeCloseTo(1140, 6);
+
+    const owned = inventory({ RawUpgrades: [] });
+    const forced = adviseGunBuild(owned, RIFLE, data, { assumeConditionals: false });
+    if (!forced.ok) throw new Error(forced.reason);
+    const galvanized = forced.mods.find((m) => m.type === MULTISHOT_GALVANIZED);
     expect(galvanized?.ignored).toEqual(["On Kill:\n+30% Multishot for 20s. Stacks up to 5x."]);
   });
 

@@ -18,10 +18,13 @@ function register(): void {
   handleAuthorized(
     BUILD_ADVISOR_REVIEW,
     assertMainRendererSender,
-    (_event, weaponType: unknown) => {
+    (_event, weaponType: unknown, assumeConditionals: unknown) => {
       const type = toNonEmptyString(weaponType, 512);
       if (!type || !ctx.currentInventoryData) return NOT_OWNED;
-      return gunBuildAdvisor.reviewGun(ctx.currentInventoryData, type);
+      // Stacks up unless the renderer asks for arsenal numbers.
+      return gunBuildAdvisor.reviewGun(ctx.currentInventoryData, type, undefined, {
+        assumeConditionals: assumeConditionals !== false,
+      });
     },
   );
 }

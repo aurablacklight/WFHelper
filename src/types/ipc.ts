@@ -639,7 +639,7 @@ export interface IpcInvokeMap {
     return: OwnedGunSummary[];
   };
   reviewGunBuild: {
-    args: [weaponType: string];
+    args: [weaponType: string, assumeConditionals: boolean];
     return: GunBuildReview;
   };
   getRivens: {

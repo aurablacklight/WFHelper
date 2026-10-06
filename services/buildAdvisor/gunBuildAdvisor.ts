@@ -251,24 +251,40 @@ function ownsWeapon(inventory: Record<string, unknown>, type: string): boolean {
   return findGun(inventory, type) !== undefined;
 }
 
+interface AdvisorOptions {
+  /** Count "On Kill" and similar bonuses as active at full stacks. */
+  assumeConditionals: boolean;
+}
+
+// What experienced players assume when they compare builds.
+const STACKS_UP: AdvisorOptions = { assumeConditionals: true };
+// What the arsenal screen shows.
+const ARSENAL_ONLY: AdvisorOptions = { assumeConditionals: false };
+
 interface RankedMod {
   name: string;
   rank: number;
   maxRank: number;
   effects: readonly ModEffect[];
   ignored: readonly string[];
+  assumed: readonly string[];
   /** True when the description states a rule that could change the numbers. */
   unmodelledRule: boolean;
 }
 
 interface Candidate extends BuildCandidate, RankedMod {}
 
-function modAtRank(entry: AdvisorModEntry, rank: number, data: AdvisorGameData): RankedMod | null {
+function modAtRank(
+  entry: AdvisorModEntry,
+  rank: number,
+  data: AdvisorGameData,
+  options: AdvisorOptions,
+): RankedMod | null {
   const levels = entry.levelStats;
   if (!levels?.length) return null;
   const maxRank = levels.length - 1;
   const usedRank = Math.min(rank, maxRank);
-  const { effects, ignored } = parseModStats(levels[usedRank].stats ?? []);
+  const { effects, ignored, assumed } = parseModStats(levels[usedRank].stats ?? [], options);
   const descriptionKey = asRecord(data.upgrades[entry.uniqueName])?.description;
   const description = typeof descriptionKey === "string" ? data.strings[descriptionKey] : undefined;
   const rules = parseModDescription(description ?? "");
@@ -278,6 +294,7 @@ function modAtRank(entry: AdvisorModEntry, rank: number, data: AdvisorGameData):
     maxRank,
     effects: [...effects, ...rules.effects],
     ignored: [...ignored, ...rules.unmodelled],
+    assumed,
     unmodelledRule: rules.unmodelled.length > 0,
   };
 }
@@ -318,6 +335,7 @@ export function evaluateGunConfig(
   weaponType: string,
   configIndex: number,
   data: AdvisorGameData = bundledGameData(),
+  options: AdvisorOptions = ARSENAL_ONLY,
 ): GunConfigEvaluation {
   const gun = ownedGun(payload, weaponType, data);
   if (typeof gun === "string") return { ok: false, reason: gun };
@@ -350,7 +368,7 @@ export function evaluateGunConfig(
     const owned = INVENTORY_ITEM_ID.test(ref) ? ranked.get(ref) : { type: ref, rank: 0 };
     const type = typeof owned?.type === "string" ? owned.type : null;
     const known = type ? byType.get(type) : undefined;
-    const mod = known ? modAtRank(known, owned?.rank ?? 0, data) : null;
+    const mod = known ? modAtRank(known, owned?.rank ?? 0, data, options) : null;
     if (type && mod) mods.push({ slot, type, ...mod });
     else unrecognised.push(type ?? ref);
   });
@@ -375,6 +393,7 @@ export function adviseGunBuild(
   payload: unknown,
   weaponType: string,
   data: AdvisorGameData = bundledGameData(),
+  options: AdvisorOptions = STACKS_UP,
 ): GunBuildAdvice {
   const gun = ownedGun(payload, weaponType, data);
   if (typeof gun === "string") return { ok: false, reason: gun };
@@ -388,7 +407,7 @@ export function adviseGunBuild(
     const rank = owned.get(entry.uniqueName);
     const upgrade = asRecord(data.upgrades[entry.uniqueName]);
     if (rank === undefined || !upgrade || !modFits(upgrade, classes, weaponTags)) continue;
-    const mod = modAtRank(entry, rank, data);
+    const mod = modAtRank(entry, rank, data, options);
     // Recommending a mod with a rule the numbers leave out would overrate it.
     if (!mod?.effects.length || mod.unmodelledRule) continue;
     candidates.push({ id: entry.uniqueName, family: entry.uniqueName, ...mod });
@@ -413,6 +432,7 @@ export function adviseGunBuild(
       maxRank: m.maxRank,
       effects: m.effects,
       ignored: m.ignored,
+      assumed: m.assumed,
       burstDpsShare:
         build.stats.burstDps > 0 ? (build.stats.burstDps - without(m)) / build.stats.burstDps : 0,
     })),
@@ -460,8 +480,9 @@ export function reviewGun(
   payload: unknown,
   weaponType: string,
   data: AdvisorGameData = bundledGameData(),
+  options: AdvisorOptions = STACKS_UP,
 ): GunBuildReview {
-  const advice = adviseGunBuild(payload, weaponType, data);
+  const advice = adviseGunBuild(payload, weaponType, data, options);
   if (!advice.ok) return { advice, configs: [] };
 
   const inventory = asRecord(unwrapInventoryPayload(payload)) ?? {};
@@ -471,7 +492,7 @@ export function reviewGun(
     const config = asRecord(raw);
     const refs: unknown = config?.Upgrades;
     if (!Array.isArray(refs) || !refs.some((ref) => typeof ref === "string" && ref !== "")) return;
-    const evaluation = evaluateGunConfig(payload, weaponType, index, data);
+    const evaluation = evaluateGunConfig(payload, weaponType, index, data, options);
     if (!evaluation.ok) return;
     configs.push({
       index,

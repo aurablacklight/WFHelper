@@ -54,7 +54,10 @@ function printStats(stats) {
 
 function printMod(mod, extra = "") {
   console.log(`    ${mod.name} (rank ${mod.rank}/${mod.maxRank})${extra}`);
-  for (const line of mod.ignored) console.log(`      not modelled: ${line.replace(/\n/g, " ")}`);
+  for (const line of mod.assumed ?? [])
+    console.log(`      assumed up: ${line.replace(/\\n|\n/g, " ")}`);
+  for (const line of mod.ignored)
+    console.log(`      not modelled: ${line.replace(/\\n|\n/g, " ")}`);
 }
 
 console.log(`${names[weapons[match.ItemType]?.name] ?? match.ItemType}\n`);

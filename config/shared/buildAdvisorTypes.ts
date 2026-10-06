@@ -62,8 +62,10 @@ interface AdvisorMod {
   rank: number;
   maxRank: number;
   effects: readonly ModEffect[];
-  /** Stat lines the calculator does not model, such as "On Kill" bonuses. */
+  /** Stat lines the calculator does not model. */
   ignored: readonly string[];
+  /** Conditional lines counted as active at full stacks. */
+  assumed: readonly string[];
 }
 
 interface AdvisedMod extends AdvisorMod {

@@ -5,6 +5,7 @@
   import { inventoryData, itemDb } from "../stores/data.js";
   import ItemImage from "../components/ItemImage.svelte";
   import SearchBox from "../components/SearchBox.svelte";
+  import ThemedButton from "../components/ThemedButton.svelte";
   import ThemedPanel from "../components/ThemedPanel.svelte";
   import type {
     DamageType,
@@ -54,6 +55,8 @@
   let selectedType = $state<string | null>(null);
   let review = $state<GunBuildReview | null>(null);
   let loadingReview = $state(false);
+  // On by default: players compare builds with their stacks running.
+  let stacksUp = $state(true);
 
   const inv = $derived($inventoryData);
   const db = $derived($itemDb);
@@ -86,13 +89,14 @@
 
   $effect(() => {
     const type = selectedType;
+    const assume = stacksUp;
     if (!type || !inv) {
       review = null;
       return;
     }
     let stale = false;
     loadingReview = true;
-    void invoke("reviewGunBuild", type)
+    void invoke("reviewGunBuild", type, assume)
       .then((result) => {
         if (!stale) review = result;
       })
@@ -135,6 +139,9 @@
       maximumFractionDigits: digits,
     }).format(value);
   }
+
+  // Stat text carries line breaks, some written as a literal backslash and n.
+  const oneLine = (text: string): string => text.replace(/\\n|\s+/g, " ");
 
   const percent = (value: number): string => `${decimal(value * 100, 1)}%`;
 
@@ -218,6 +225,13 @@
     <h2>{$tr("common.builds")}</h2>
     <span class="text-xs text-text-muted">{$tr("builds.hint")}</span>
     <div class="ml-auto flex items-center gap-2">
+      <ThemedButton
+        active={stacksUp}
+        title={$tr("builds.stacksUpHint")}
+        onClick={() => (stacksUp = !stacksUp)}
+      >
+        <span data-builds-stacks>{$tr("builds.stacksUp")}</span>
+      </ThemedButton>
       <SearchBox bind:value={search} />
     </div>
   </div>
@@ -344,9 +358,14 @@
                           {$tr("builds.share", { percent: decimal(mod.burstDpsShare * 100, 0) })}
                         </span>
                       </div>
+                      {#each mod.assumed as line (line)}
+                        <span class="text-[0.7rem] text-text-muted" data-builds-assumed>
+                          {$tr("builds.assumes", { text: oneLine(line) })}
+                        </span>
+                      {/each}
                       {#each mod.ignored as line (line)}
                         <span class="text-[0.7rem] text-text-muted">
-                          {$tr("builds.notCounted", { text: line.replace(/\s+/g, " ") })}
+                          {$tr("builds.notCounted", { text: oneLine(line) })}
                         </span>
                       {/each}
                     </div>

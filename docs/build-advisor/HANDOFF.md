@@ -42,8 +42,8 @@ Two bugs were found by checking against real data, and both are fixed:
 
 In rough order of how much they change a recommendation:
 
-1. Conditional bonuses are ignored. A Galvanized mod counts only its always-on
-   part, so its plain form usually outranks it.
+1. (Addressed, see the research section below.) Conditional bonuses were
+   ignored, so a Galvanized mod's plain form usually outranked it.
 2. Mod capacity and polarities are not checked, so a build may not fit.
 3. There is no enemy. Status, faction and armour-related mods add nothing, and
    the ranking is burst DPS alone.
@@ -71,10 +71,21 @@ page:
   sources. Mod effects per rank do not, so the text parser stays.
 - Conditional bonuses should be assumed up. A fully stacked Galvanized
   multishot mod is +230% against +90% or +120% for the plain one.
-- Known bug: the advisor can recommend Critical Delay with Point Strike. The
-  wiki states that a corrupted crit chance mod cannot be equipped with its
-  standard counterpart (also Critical Deceleration with Blunderbuss, Creeping
-  Bullseye with Pistol Gambit). The family rule does not catch these.
+- Fixed after the research: the advisor used to recommend Critical Delay with
+  Point Strike. The wiki states that a corrupted crit chance mod cannot be
+  equipped with its standard counterpart (also Critical Deceleration with
+  Blunderbuss, Creeping Bullseye with Pistol Gambit); those three pairs are now
+  listed explicitly in `gunBuildAdvisor.ts`.
+- Done after the research: conditional bonuses. "On Kill", "On Weak Point Hit"
+  and "On Reload" bonuses to multishot, critical chance, critical damage, fire
+  rate and status chance are counted at full stacks by default, and each mod
+  lists the lines that were assumed. The Builds view has a "Stacks up" toggle;
+  turning it off ranks on arsenal numbers. Saved configs are still checked
+  against the arsenal without stacks. Not covered: the Galvanized Aptitude,
+  Savvy and Shot "damage per status type" bonus, which needs a status model,
+  and anything whose text does not match the pattern in full.
+- The bundled `@wfcd/items` text writes a line break inside a stat line as a
+  literal backslash and n, not a newline. The parser accepts both.
 
 Creator coverage is thin: TheKengineer is well covered, Brozime is one older
 video plus three tables from his vault, and nothing from Tactical Potato could

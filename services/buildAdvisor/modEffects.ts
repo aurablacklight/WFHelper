@@ -28,6 +28,8 @@ export function parseModDescription(description: string): ParsedModRules {
 interface ParsedModStats {
   effects: ModEffect[];
   ignored: string[];
+  /** Conditional lines counted as active because the caller asked for that. */
+  assumed: string[];
 }
 
 const PERCENT = "([+-]\\d+(?:\\.\\d+)?)%";
@@ -78,12 +80,61 @@ function parseLine(line: string): ModEffect | null {
   return null;
 }
 
-export function parseModStats(lines: readonly string[]): ParsedModStats {
-  const result: ParsedModStats = { effects: [], ignored: [] };
+const CONDITIONAL_STATS: Readonly<Record<string, PlainGunStat>> = {
+  Multishot: "multishot",
+  "Critical Chance": "criticalChance",
+  "Critical Damage": "criticalDamage",
+  "Fire Rate": "fireRate",
+  "Status Chance": "statusChance",
+};
+
+// The bundled data writes a line break as a backslash and an n; tests and other
+// sources may use a real newline.
+const LINE_BREAK = "(?:\\\\n|\\n)";
+
+// "On Kill:\n+30% Multishot for 20s. Stacks up to 5x." A line may hold several.
+const CONDITIONAL_CLAUSE =
+  `On [A-Za-z ]+:${LINE_BREAK}([+-]\\d+(?:\\.\\d+)?)% (` +
+  Object.keys(CONDITIONAL_STATS).join("|") +
+  ")(?: when Aiming)? for \\d+(?:\\.\\d+)?s(?:\\. Stacks up to (\\d+)x\\.)?";
+const CONDITIONAL_LINE = new RegExp(
+  `^${CONDITIONAL_CLAUSE}(?:${LINE_BREAK}${CONDITIONAL_CLAUSE})*$`,
+);
+
+/** The bonuses of a conditional line with every stack up, or null when any part
+ *  of the line is not understood. */
+function parseConditionalLine(line: string): ModEffect[] | null {
+  if (!CONDITIONAL_LINE.test(line)) return null;
+  const effects: ModEffect[] = [];
+  for (const clause of line.matchAll(new RegExp(CONDITIONAL_CLAUSE, "g"))) {
+    const stacks = clause[3] ? Number(clause[3]) : 1;
+    const value = fraction(String(Number(clause[1]) * stacks));
+    effects.push({ stat: CONDITIONAL_STATS[clause[2]], value });
+  }
+  return effects;
+}
+
+interface ParseModStatsOptions {
+  /** Count "On Kill" and similar bonuses as active at full stacks. */
+  assumeConditionals?: boolean;
+}
+
+export function parseModStats(
+  lines: readonly string[],
+  options: ParseModStatsOptions = {},
+): ParsedModStats {
+  const result: ParsedModStats = { effects: [], ignored: [], assumed: [] };
   for (const line of lines) {
     const effect = parseLine(line);
-    if (effect) result.effects.push(effect);
-    else result.ignored.push(line);
+    const conditional = effect || !options.assumeConditionals ? null : parseConditionalLine(line);
+    if (effect) {
+      result.effects.push(effect);
+    } else if (conditional) {
+      result.effects.push(...conditional);
+      result.assumed.push(line);
+    } else {
+      result.ignored.push(line);
+    }
   }
   return result;
 }
