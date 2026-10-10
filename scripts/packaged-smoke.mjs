@@ -36,10 +36,12 @@ let runtime;
 const errors = [];
 try {
   app = await electron.launch({
+    timeout: 60_000,
     executablePath: path.resolve(executable),
     args: ["--no-sandbox"],
     env,
   });
+  console.log("Packaged app connected; checking native runtime assets.");
   const watch = (page) => {
     page.on("pageerror", (error) => errors.push(String(error)));
     page.on("crash", () => errors.push(`renderer crashed: ${page.url()}`));
@@ -74,6 +76,7 @@ try {
   });
   assert.equal(runtime.packaged, true, "the smoke must launch a packaged app");
   assert.ok(runtime.imageBytes > 0);
+  console.log("Native runtime assets passed; checking setup UI and version.");
   const deadline = Date.now() + 90_000;
   let page;
   while (!page && Date.now() < deadline) {
@@ -84,6 +87,16 @@ try {
   await page.locator("#app").waitFor({ state: "visible", timeout: 30_000 });
   await page.locator("#content.setup-active").waitFor({ state: "visible", timeout: 30_000 });
   await page.screenshot({ path: path.join(output, "packaged-setup.png") });
+  // Setup intentionally hides the status bar. Complete it only in this sandbox
+  // to check the version users see during normal operation.
+  await page.evaluate(() => localStorage.setItem("setup-completed-v2", "1"));
+  await page.reload();
+  assert.equal(
+    await page.locator("[data-app-version]").innerText(),
+    `v${runtime.version}`,
+    "visible version must match the installed package",
+  );
+  await page.screenshot({ path: path.join(output, "packaged-version.png") });
   assert.deepEqual(errors, [], "packaged renderer errors");
   fs.writeFileSync(path.join(output, "runtime.json"), JSON.stringify(runtime, null, 2));
   passed = true;

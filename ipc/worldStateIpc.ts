@@ -25,7 +25,10 @@ import os from "node:os";
 
 const log = withScope("worldStateIpc");
 
-import { WIN_APP_USER_MODEL_ID as APP_USER_MODEL_ID } from "../config/shared/appMeta";
+import {
+  DISTRIBUTION_APP_ID as APP_USER_MODEL_ID,
+  DISTRIBUTION_NAME,
+} from "../config/runtime/distribution";
 
 const electronModule = require("electron") as Partial<typeof import("electron")>;
 let notificationCtor = electronModule.Notification;
@@ -172,7 +175,7 @@ function ensureStartMenuShortcut(): void {
       "Start Menu",
       "Programs",
     );
-    const lnkPath = path.join(startMenuDir, "WFHelper.lnk");
+    const lnkPath = path.join(startMenuDir, `${DISTRIBUTION_NAME}.lnk`);
 
     // Read existing shortcut to check if it already has the correct target + AUMID.
     let needWrite = true;
