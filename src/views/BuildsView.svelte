@@ -4,6 +4,9 @@
   import { invoke } from "../lib/ipc.js";
   import { inventoryData, itemDb } from "../stores/data.js";
   import ItemImage from "../components/ItemImage.svelte";
+  import BuildModPreview from "../components/BuildModPreview.svelte";
+  import RivenPolarityIcon from "../components/RivenPolarityIcon.svelte";
+  import WikiButton from "../components/WikiButton.svelte";
   import SearchBox from "../components/SearchBox.svelte";
   import ThemedButton from "../components/ThemedButton.svelte";
   import ThemedPanel from "../components/ThemedPanel.svelte";
@@ -331,45 +334,48 @@
           {#each GROUPS as group (group.category)}
             {@const groupGuns = visibleGuns.filter((gun) => gun.category === group.category)}
             {#if groupGuns.length > 0}
-              <div class="flex flex-col gap-0.5">
-                <h3
-                  class="m-0 px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-text-muted"
+              <details open data-builds-category={group.category}>
+                <summary
+                  class="cursor-pointer rounded-[var(--radius-md)] px-1 py-1 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                 >
                   {$tr(group.labelKey)}
-                </h3>
-                {#each groupGuns as gun (gun.type)}
-                  <button
-                    type="button"
-                    class="gun-row flex items-center gap-2 rounded-[var(--radius-md)] px-2 py-1 text-left text-xs"
-                    class:gun-row-active={gun.type === selectedType}
-                    aria-pressed={gun.type === selectedType}
-                    data-builds-gun={gun.type}
-                    onclick={() => (selectedType = gun.type)}
-                  >
-                    <span class="h-6 w-6 shrink-0 overflow-hidden">
-                      <ItemImage
-                        src={db[gun.type]?.imageUrl ?? null}
-                        alt={gun.name}
-                        auditKey={gun.name}
-                        cls="h-6 w-6"
-                      />
-                    </span>
-                    <span
-                      class="flex-1 truncate {gun.unsupported
-                        ? 'text-text-muted'
-                        : 'text-text-secondary'}"
-                      title={gun.name}
+                  <span class="ml-1 font-normal tabular-nums">({groupGuns.length})</span>
+                </summary>
+                <div class="mt-1 flex flex-col gap-0.5">
+                  {#each groupGuns as gun (gun.type)}
+                    <button
+                      type="button"
+                      class="gun-row flex items-center gap-2 rounded-[var(--radius-md)] px-2 py-1 text-left text-xs"
+                      class:gun-row-active={gun.type === selectedType}
+                      aria-pressed={gun.type === selectedType}
+                      data-builds-gun={gun.type}
+                      onclick={() => (selectedType = gun.type)}
                     >
-                      {db[gun.type]?.displayName ?? gun.name}
-                    </span>
-                    {#if gun.unsupported}
-                      <span class="whitespace-nowrap text-[0.65rem] text-text-muted">
-                        {$tr("builds.notSupported")}
+                      <span class="h-6 w-6 shrink-0 overflow-hidden">
+                        <ItemImage
+                          src={db[gun.type]?.imageUrl ?? null}
+                          alt={gun.name}
+                          auditKey={gun.name}
+                          cls="h-6 w-6"
+                        />
                       </span>
-                    {/if}
-                  </button>
-                {/each}
-              </div>
+                      <span
+                        class="flex-1 truncate {gun.unsupported
+                          ? 'text-text-muted'
+                          : 'text-text-secondary'}"
+                        title={gun.name}
+                      >
+                        {db[gun.type]?.displayName ?? gun.name}
+                      </span>
+                      {#if gun.unsupported}
+                        <span class="whitespace-nowrap text-[0.65rem] text-text-muted">
+                          {$tr("builds.notSupported")}
+                        </span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              </details>
             {/if}
           {/each}
         </ThemedPanel>
@@ -382,7 +388,13 @@
           </div>
         {:else if selected.unsupported}
           <ThemedPanel className="flex flex-col gap-1 p-3">
-            <h3 class="m-0 text-sm font-semibold text-text-primary">{selected.name}</h3>
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="m-0 text-sm font-semibold text-text-primary">{selected.name}</h3>
+              <WikiButton
+                wikiUrl={db[selected.type]?.wikiaUrl ?? null}
+                fallbackName={db[selected.type]?.name ?? selected.name}
+              />
+            </div>
             <p class="m-0 text-xs text-text-muted" data-builds-unsupported>
               {selected.unsupported === "unknown-weapon"
                 ? $tr("builds.unknownWeapon")
@@ -393,6 +405,12 @@
           <ThemedPanel className="flex flex-col gap-2 p-3">
             <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <h3 class="m-0 text-sm font-semibold text-text-primary">{advice.weapon.name}</h3>
+              <span class="shrink-0" data-builds-weapon-wiki>
+                <WikiButton
+                  wikiUrl={db[advice.weapon.type]?.wikiaUrl ?? null}
+                  fallbackName={db[advice.weapon.type]?.name ?? advice.weapon.name}
+                />
+              </span>
               {#if advice.weapon.bonus}
                 {@const bonus = advice.weapon.bonus}
                 <span class="text-xs text-text-secondary" data-builds-bonus>
@@ -441,18 +459,36 @@
                     data-builds-mod={mod.type}
                     data-builds-arcane={mod.isArcane ? "" : undefined}
                   >
-                    <span class="h-9 w-9 shrink-0 overflow-hidden">
-                      <ItemImage
-                        src={db[mod.type]?.imageUrl ?? null}
-                        alt={mod.name}
-                        auditKey={mod.name}
-                        cls="h-9 w-9"
-                      />
-                    </span>
+                    <BuildModPreview
+                      src={db[mod.type]?.imageUrl ?? null}
+                      name={db[mod.type]?.displayName ?? mod.name}
+                      rank={$tr("rivens.detail.rank", {
+                        current: String(mod.rank),
+                        max: String(mod.maxRank),
+                      })}
+                      description={db[mod.type]?.description ?? ""}
+                    />
                     <div class="flex min-w-0 flex-1 flex-col gap-1">
-                      <div class="flex items-baseline gap-2 text-xs">
+                      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                         <span class="truncate font-semibold text-text-secondary" title={mod.name}>
                           {db[mod.type]?.displayName ?? mod.name}
+                        </span>
+                        {#if !mod.isArcane}
+                          <RivenPolarityIcon
+                            polarity={mod.polarity}
+                            size={18}
+                            className="shrink-0 self-center"
+                          />
+                        {/if}
+                        <span class="shrink-0" data-builds-mod-wiki>
+                          <WikiButton
+                            wikiUrl={mod.type.startsWith("riven:")
+                              ? null
+                              : (db[mod.type]?.wikiaUrl ?? null)}
+                            fallbackName={mod.type.startsWith("riven:")
+                              ? "Riven Mods"
+                              : (db[mod.type]?.name ?? mod.name)}
+                          />
                         </span>
                         {#if mod.isArcane}
                           <span class="whitespace-nowrap text-accent"

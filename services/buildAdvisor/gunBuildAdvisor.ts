@@ -697,6 +697,7 @@ export function adviseGunBuild(
     mods: build.mods.map((m) => ({
       type: m.id,
       name: m.name,
+      polarity: m.polarity,
       rank: m.rank,
       maxRank: m.maxRank,
       effects: m.effects,

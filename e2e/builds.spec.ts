@@ -88,6 +88,20 @@ test.describe("Build advisor", () => {
     await expect(page.locator("[data-builds-arcane]")).toHaveCount(1);
     await expect(page.locator(`[data-builds-mod="${SECONDARY_MERCILESS}"]`)).toBeVisible();
     await expect(page.locator("[data-builds-assumed]")).toHaveCount(2);
+    const hornet = page.locator(`[data-builds-mod="${HORNET_STRIKE}"]`);
+    await expect(hornet.getByAltText("Polarity: Madurai", { exact: true })).toBeVisible();
+    const previewTrigger = hornet.locator("[data-builds-preview-trigger]");
+    const preview = hornet.locator("[data-builds-preview]");
+    await previewTrigger.hover();
+    await expect(preview).toBeVisible();
+    await expect(preview).toContainText("Hornet Strike");
+    await page.screenshot({ path: test.info().outputPath("builds-mod-preview.png") });
+    await page.locator("[data-builds-stats]").hover();
+    await expect(preview).toBeHidden();
+    await previewTrigger.focus();
+    await expect(preview).toBeVisible();
+    await previewTrigger.press("Escape");
+    await expect(preview).toBeHidden();
     // Hornet Strike (14) halves on Lex Prime's built-in attack polarity; the
     // galvanized mod costs 14.
     await expect(page.locator("[data-builds-capacity]")).toContainText("21/60");

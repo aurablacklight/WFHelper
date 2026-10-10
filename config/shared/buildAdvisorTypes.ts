@@ -77,6 +77,7 @@ interface AdvisorMod {
 }
 
 interface AdvisedMod extends AdvisorMod {
+  polarity?: string | null;
   /** Fraction of the build's burst damage per second lost without this mod. */
   burstDpsShare: number;
 }
