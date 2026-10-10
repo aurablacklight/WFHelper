@@ -32,13 +32,19 @@ pnpm test                # vitest
 pnpm run build           # production build
 ```
 
-The pre-push hook runs all of these, and also checks the ONNX models, typechecks
-and tests the Worker, and audits production dependencies. On Windows it then
-runs the Electron DBWIN test (`test:dbwin`), the reward scan test
-(`test:reward-scan`) and the Playwright suite on the fresh build
-(`test:e2e:built`). CI runs the same checks and a few more across its Linux and
-Windows jobs. It skips the dependency audit on pull requests and runs it on
-branch pushes.
+The pre-push hook checks the commits being pushed: formatting and lint for changed
+files, application/test types, Svelte, the fast unit suite, and focused Windows UI
+specs. Changed UI spec files run directly; app changes include the smoke test,
+with focused mappings for Sidebar, Builds and the Electron harness. Run any
+additional feature-specific tests listed in VERIFICATION.md before pushing.
+
+CI retains the complete checks: full lint/format/dead-code and dependency audits,
+Worker checks, Windows native regressions, Linux startup, and the entire UI suite
+across three Windows shards. A successful local push is not a green CI result.
+
+Preview the local selection with
+`node scripts/check-push.mjs --base=origin/feat/build-advisor --list`, or omit
+`--list` to run those checks manually. Choose the appropriate comparison branch.
 
 `pnpm run format` fixes formatting for you. Please do not skip the pre-push
 checks with `--no-verify`.

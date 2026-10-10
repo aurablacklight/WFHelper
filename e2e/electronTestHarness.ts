@@ -43,6 +43,33 @@ const harnessState = new WeakMap<
 >();
 const harnessProcesses = new WeakMap<ElectronApplication, ChildProcess>();
 
+async function launchWithStartupLock(
+  options: Parameters<typeof electron.launch>[0],
+): Promise<ElectronApplication> {
+  if (process.platform !== "win32") return electron.launch(options);
+  // Simultaneous Windows launches can stall before Chromium's debugger attaches.
+  // Serialize startup across this runner's workers, then run their tests in parallel.
+  const lock = path.join(os.tmpdir(), `wfhelper-startup-${process.ppid}.lock`);
+  const deadline = Date.now() + 120_000;
+  for (;;) {
+    try {
+      const handle = fs.openSync(lock, "wx");
+      fs.writeFileSync(handle, String(process.pid));
+      fs.closeSync(handle);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (Date.now() >= deadline) throw new Error("Electron startup lock timed out");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  try {
+    return await electron.launch({ ...options, timeout: 30_000 });
+  } finally {
+    fs.unlinkSync(lock);
+  }
+}
+
 export async function launchElectronTestHarness(
   prefix: string,
   options: ElectronTestHarnessOptions = {},
@@ -86,7 +113,7 @@ async function startHarness(
   let app: ElectronApplication | null = null;
   let saveArtifacts: ((failed?: boolean, failure?: unknown) => Promise<void>) | undefined;
   try {
-    app = await electron.launch({
+    app = await launchWithStartupLock({
       args: ["--no-sandbox", `--lang=${options.lang ?? "en-US"}`, options.entryPoint ?? "."],
       env,
     });
