@@ -58,8 +58,9 @@ async function launchWithStartupLock(
       fs.closeSync(handle);
       break;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      if (Date.now() >= deadline) throw new Error("Electron startup lock timed out");
+      if ((error as { code?: string }).code !== "EEXIST") throw error;
+      if (Date.now() >= deadline)
+        throw new Error("Electron startup lock timed out", { cause: error });
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
