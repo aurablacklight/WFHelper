@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { targetDps } from "../../services/buildAdvisor/statusModel";
 import { findBestGunBuild, type BuildCandidate } from "../../services/buildAdvisor/gunBuildSearch";
 import type { GunBaseStats, GunStats, ModEffect } from "../../config/shared/buildAdvisorTypes";
 
@@ -21,6 +22,25 @@ const mod = (id: string, effects: ModEffect[], family = id): BuildCandidate => (
 const ids = (mods: readonly BuildCandidate[]) => mods.map((m) => m.id).sort();
 
 describe("findBestGunBuild", () => {
+  it("selects Hunter Munitions for armoured targets but not raw Arsenal DPS", () => {
+    const base = { ...gun, criticalChance: 1, criticalMultiplier: 3, statusChance: 0 };
+    const candidates = [
+      mod("hunter", [{ stat: "slashOnCritical", value: 0.3 }]),
+      mod("damage", [{ stat: "damage", value: 1 }]),
+    ];
+    const raw = findBestGunBuild(base, candidates, 1);
+    const armoured = findBestGunBuild(
+      base,
+      candidates,
+      1,
+      [],
+      (s) => targetDps(s, "grineer").burstDps,
+    );
+    expect(ids(raw.mods)).toEqual(["damage"]);
+    expect(ids(armoured.mods)).toEqual(["hunter"]);
+    expect(armoured.stats.slashOnCritical).toBe(0.3);
+  });
+
   it("prefers bonuses that multiply over a second bonus of the same kind", () => {
     const build = findBestGunBuild(
       gun,

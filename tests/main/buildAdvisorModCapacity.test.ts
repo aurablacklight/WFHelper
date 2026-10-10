@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { minimumDrain, slotCost } from "../../services/buildAdvisor/modCapacity";
+import {
+  minimumDrain,
+  possiblePolarities,
+  slotCost,
+} from "../../services/buildAdvisor/modCapacity";
 
 const ATTACK = "AP_ATTACK";
 const TACTIC = "AP_TACTIC";
@@ -24,11 +28,17 @@ describe("slotCost", () => {
   it("adds a quarter on the wrong polarity, rounded to nearest", () => {
     // The wiki's Mod page table: a 5-drain mod costs 6.
     expect(slotCost(5, ATTACK, DEFENSE)).toBe(6);
-    expect(slotCost(9, ATTACK, DEFENSE)).toBe(11);
+    // Max-rank Semi-Shotgun Cannonade, Tenet screenshot 2026-10-10.
+    expect(slotCost(9, DEFENSE, ATTACK)).toBe(11);
   });
 
   it("treats a universal slot as matching every mod", () => {
     expect(slotCost(9, TACTIC, "AP_ANY")).toBe(5);
+  });
+
+  it("does not halve an Umbra mod on a universal slot", () => {
+    expect(slotCost(16, "AP_UMBRA", "AP_ANY")).toBe(20);
+    expect(slotCost(16, "AP_UMBRA", "AP_UMBRA")).toBe(8);
   });
 });
 
@@ -80,5 +90,62 @@ describe("minimumDrain", () => {
 
   it("cannot place more mods than there are slots", () => {
     expect(minimumDrain([mod(1, ATTACK), mod(1, ATTACK)], [], 1)).toBe(Infinity);
+  });
+
+  it("reserves a restricted match when another mod can use either polarity", () => {
+    expect(minimumDrain([mod(2, "AP_ANY"), mod(2, ATTACK)], [ATTACK, TACTIC], 2)).toBe(2);
+  });
+
+  it("agrees with exhaustive slot assignments, including partial and universal layouts", () => {
+    const brute = (
+      mods: readonly { drain: number; polarity: string }[],
+      slots: readonly (string | null)[],
+    ): number => {
+      if (!mods.length) return 0;
+      return Math.min(
+        ...slots.map(
+          (slot, index) =>
+            slotCost(mods[0].drain, mods[0].polarity, slot) +
+            brute(
+              mods.slice(1),
+              slots.filter((_, other) => other !== index),
+            ),
+        ),
+      );
+    };
+    const polarities = [ATTACK, TACTIC, "AP_UMBRA", "AP_ANY", null];
+    for (const first of polarities) {
+      for (const second of polarities) {
+        for (const third of polarities) {
+          const slots = [first, second, third];
+          for (const drain of [2, 3, 6, 7]) {
+            const mods = [mod(drain, ATTACK), mod(7, "AP_UMBRA"), mod(4, TACTIC)];
+            for (const count of [1, 2, 3]) {
+              expect(minimumDrain(mods.slice(0, count), slots, 3)).toBe(
+                brute(mods.slice(0, count), slots),
+              );
+            }
+          }
+        }
+      }
+    }
+  });
+});
+
+describe("possiblePolarities", () => {
+  it("includes replacement and addition instead of assuming every Forma adds a slot", () => {
+    const layouts = possiblePolarities([ATTACK], [TACTIC], 2);
+    expect(layouts).toHaveLength(2);
+    expect(layouts).toContainEqual([ATTACK, TACTIC]);
+    expect(layouts).toContainEqual([TACTIC, null]);
+  });
+
+  it("cannot retain an innate polarity when every slot has an override", () => {
+    expect(possiblePolarities([ATTACK], [TACTIC, null], 2)).toEqual([[TACTIC, null]]);
+  });
+
+  it("deduplicates identical layouts and preserves known innate slots without overrides", () => {
+    expect(possiblePolarities([ATTACK, ATTACK], [], 3)).toEqual([[ATTACK, ATTACK, null]]);
+    expect(possiblePolarities([ATTACK, ATTACK], [TACTIC], 3)).toHaveLength(2);
   });
 });

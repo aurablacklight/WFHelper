@@ -6,27 +6,48 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { parseArgs } = require("node:util");
 
 const BUILD = path.resolve(__dirname, "..", "..", ".electron-build", "services");
-const { adviseGunBuild, evaluateGunConfig } = require(
+const { listOwnedGuns, reviewGun } = require(
   path.join(BUILD, "buildAdvisor", "gunBuildAdvisor.js"),
 );
-const { readPepDict, readPepExport } = require(path.join(BUILD, "bundledGameData.js"));
+const { ADVISOR_FACTIONS } = require(
+  path.join(BUILD, "..", "config", "shared", "buildAdvisorTypes.js"),
+);
 
-const [inventoryPath, wanted] = process.argv.slice(2);
-if (!inventoryPath || !wanted) {
-  console.error("usage: advise-gun-build.cjs <inventory.json> <weapon name or /Lotus/ type>");
+const usage =
+  "usage: advise-gun-build.cjs <inventory.json> <weapon name or /Lotus/ type> [--target faction] [--stacks] [--no-capacity] [--json]";
+let args;
+try {
+  args = parseArgs({
+    allowPositionals: true,
+    options: {
+      target: { type: "string" },
+      stacks: { type: "boolean", default: false },
+      "no-capacity": { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
+    },
+  });
+} catch (error) {
+  console.error(error.message);
+  console.error(usage);
+  process.exit(2);
+}
+const [inventoryPath, wanted] = args.positionals;
+const faction = args.values.target ?? null;
+if (args.positionals.length !== 2 || (faction && !ADVISOR_FACTIONS.includes(faction))) {
+  console.error(usage);
+  console.error(`targets: ${ADVISOR_FACTIONS.join(", ")}`);
   process.exit(2);
 }
 
 const inventory = JSON.parse(fs.readFileSync(inventoryPath, "utf8"));
-const weapons = readPepExport("ExportWeapons") ?? {};
-const names = readPepDict("en") ?? {};
-const owned = ["LongGuns", "Pistols"].flatMap((category) => inventory[category] ?? []);
+// Keep loader info messages out of stdout so --json is machine-readable.
+if (args.values.json) require("electron-log/main").transports.console.level = "warn";
+const owned = listOwnedGuns(inventory);
 const match = owned.find(
-  (gun) =>
-    gun.ItemType === wanted ||
-    (names[weapons[gun.ItemType]?.name] ?? "").toLowerCase() === wanted.toLowerCase(),
+  (gun) => gun.type === wanted || gun.name.toLowerCase() === wanted.toLowerCase(),
 );
 if (!match) {
   console.error(`No owned primary or secondary matches "${wanted}".`);
@@ -36,7 +57,7 @@ if (!match) {
 const percent = (value) => `${(value * 100).toFixed(1)}%`;
 const fixed = (value, digits = 2) => value.toFixed(digits);
 
-function printStats(stats) {
+function printStats(stats, versus) {
   for (const [type, amount] of Object.entries(stats.damage)) {
     console.log(`    ${type.padEnd(12)} ${fixed(amount, 1)}`);
   }
@@ -50,6 +71,14 @@ function printStats(stats) {
   console.log(`    reload       ${fixed(stats.reloadTime)}s`);
   console.log(`    burst dps    ${fixed(stats.burstDps, 0)}`);
   console.log(`    sustained    ${fixed(stats.sustainedDps, 0)}`);
+  if (versus) {
+    console.log(
+      `    vs ${versus.faction}: estimated burst ${fixed(versus.burstDps, 0)}, sustained ${fixed(versus.sustainedDps, 0)}`,
+    );
+    console.log(
+      `      direct ${fixed(versus.directDps, 0)}, status ${fixed(versus.statusDps, 0)}, viral ${fixed(versus.viralMultiplier)}x, armour pass-through ${percent(versus.armourMultiplier)}`,
+    );
+  }
 }
 
 function printMod(mod, extra = "") {
@@ -60,31 +89,49 @@ function printMod(mod, extra = "") {
     console.log(`      not modelled: ${line.replace(/\\n|\n/g, " ")}`);
 }
 
-console.log(`${names[weapons[match.ItemType]?.name] ?? match.ItemType}\n`);
+const options = {
+  assumeConditionals: args.values.stacks,
+  respectCapacity: !args.values["no-capacity"],
+  faction,
+};
+const review = reviewGun(inventory, match.type, undefined, options);
+if (args.values.json) {
+  console.log(JSON.stringify({ options, ...review }, null, 2));
+  process.exit(review.advice.ok ? 0 : 1);
+}
+console.log(`${match.name}\n`);
+console.log(
+  `  Stacks ${options.assumeConditionals ? "up" : "off"}; target ${faction ?? "none"}; capacity ${options.respectCapacity ? "checked when known" : "ignored"}\n`,
+);
 
-(match.Configs ?? []).forEach((config, index) => {
-  if (!(config.Upgrades ?? []).some(Boolean)) return;
-  const result = evaluateGunConfig(inventory, match.ItemType, index);
-  if (!result.ok) {
-    console.log(`Config ${index}: ${result.reason}`);
-    return;
-  }
+review.configs.forEach((config) => {
   console.log(
-    `  Saved config ${String.fromCharCode(65 + index)}${config.Name ? ` "${config.Name}"` : ""}`,
+    `  Saved config ${String.fromCharCode(65 + config.index)}${config.name ? ` "${config.name}"` : ""}`,
   );
-  if (result.arcane) printMod(result.arcane, "  [arcane]");
-  for (const mod of result.mods) printMod(mod);
-  for (const type of result.unrecognised) console.log(`    not modelled: ${type}`);
-  printStats(result.stats);
+  if (config.arcane) printMod(config.arcane, "  [arcane]");
+  for (const mod of config.mods) printMod(mod);
+  for (const type of config.unrecognised) console.log(`    not modelled: ${type}`);
+  printStats(config.stats, config.versus);
   console.log("");
 });
-const advice = adviseGunBuild(inventory, match.ItemType);
+const advice = review.advice;
 if (!advice.ok) {
   console.log(`Advisor: ${advice.reason}`);
   process.exit(1);
 }
 console.log("  Recommended from owned mods");
+if (advice.capacity) {
+  console.log(
+    `    capacity ${advice.capacity.conservative ? "at most " : ""}${advice.capacity.used}/${advice.capacity.total}`,
+  );
+} else if (options.respectCapacity) console.log("    capacity unknown: weapon XP unavailable");
+if (advice.weapon.bonus)
+  console.log(`    bonus ${percent(advice.weapon.bonus.value)} ${advice.weapon.bonus.damageType}`);
+if (advice.weapon.radialBase)
+  console.log(`    includes ${fixed(advice.weapon.radialBase, 1)} base radial damage`);
+if (advice.approximate)
+  console.log("    approximate firing cycle: DPS and mod ranking need an in-game check");
 if (advice.arcane)
   printMod(advice.arcane, `  [arcane] ${percent(advice.arcane.burstDpsShare)} of burst dps`);
 for (const mod of advice.mods) printMod(mod, `  ${percent(mod.burstDpsShare)} of burst dps`);
-printStats(advice.stats);
+printStats(advice.stats, advice.versus);

@@ -70,6 +70,10 @@ function fraction(percent: string): number {
 }
 
 function parseLine(line: string): ModEffect | null {
+  const forcedSlash = /^\+(\d+(?:\.\d+)?)% chance to apply <DT_SLASH_COLOR> on Critical$/.exec(
+    line,
+  );
+  if (forcedSlash) return { stat: "slashOnCritical", value: fraction(forcedSlash[1]) };
   for (const [pattern, stat] of PLAIN_STATS) {
     const match = pattern.exec(line);
     if (match) return { stat, value: fraction(match[1]) };

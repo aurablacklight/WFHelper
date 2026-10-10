@@ -1,9 +1,158 @@
 # Build advisor: where things stand
 
-Last updated 2026-10-06, when the gun advisor MVP reached feature complete. Read
+Last updated 2026-10-10, during offline validation of the feature-complete gun MVP. Read
 this first when picking the work back up. `damage-rules.md` has the three
 in-game checks behind the arsenal numbers, `../adr/` the two design decisions,
 and `reports/` the research the later work was built from.
+
+## Offline follow-up (2026-10-10)
+
+### Final Windows Electron rerun after the game closed
+
+Rebuilt the production app and ran the complete suite at the normal four
+workers. Command exited 0: 356 passed, three flaky passes, one intentional
+overlay-stress skip, 9.8 minutes. `.last-run.json` reports `passed` with no
+failed tests. The earlier outside-test worker failure did not recur. This
+supersedes the earlier failed full-suite gate, but is not a flake-free run.
+
+The three retried cases were drop-source ingredient lookup (180s timeout),
+Foundry modular categories (120s beforeAll timeout), and relic tier layout
+(process failed to launch). Each then passed. A focused four-worker rerun of
+those three cases, repeated three times with retries disabled, passed all nine
+in 29.6s. That did not reproduce the failures, so no speculative code fix or
+timeout increase was made. Root cause remains undiagnosed.
+
+Evidence: `.tmp/build-advisor-validation/e2e-full-rerun.log` and its adjacent
+`e2e-full-rerun/` artifacts; focused run `e2e-timeout-repro.log` and
+`e2e-timeout-repro/`. No Electron, WFHelper or Warframe processes remained at
+the final process check. Production build retained the previously documented
+chunk-size and mixed-import warnings.
+
+### Mechanics and offline changes
+
+- Initial in-game A/B series is now recorded in `validation.md`: three Brozime
+  trials average ~6.4s; three Codex trials without a mid-fight van explosion
+  average ~2.5s. An additional Codex run with the van exploding took ~3.2s
+  and is marked confounded. A repeat with the van already destroyed took
+  ~2.3s. This supports the predicted ordering for this matchup, not absolute
+  DPS or general rankings. All seven combat trial recordings were renamed by
+  build/trial in the local captures folder; originals' timestamps are mapped
+  in the validation record. Screenshots confirm both builds' Arsenal stats.
+
+- After the Simulacrum clip, added Hunter Munitions' rank-scaled forced Slash
+  chance to target-faction estimates and build search. It operates with Stacks
+  up off too, since its chance is rolled per critical hit. Critical-only damage
+  weighting excludes noncritical hits; crit tiers above 100% increase damage
+  without increasing the proc chance. Natural Slash procs remain separate.
+  Raw Arsenal stats/DPS are unchanged. Other forced-Slash sources, Hunter set
+  bonuses and Galvanized Savvy damage remain outside the model.
+- The actual Tenet config now reads Hunter Munitions as modelled. With Grineer
+  selected and stacks off, its steady-state estimate rises from 17,665 to
+  62,725 burst DPS, of which 45,060 is estimated bleed. These are estimates,
+  not measured DPS from the single-shot clip. The manual tick comparison still
+  has an unexplained 0.031% difference; no fitted adjustment was made.
+- Hunter Munitions follow-up verification: all 419 unit files passed (6,012
+  tests, seven skipped), including 144 advisor tests; all four typechecks,
+  main build, changed-file ESLint, formatting and diff whitespace checks passed.
+  The real local snapshot diagnostic confirms the saved effect and updated
+  faction score. No Electron/game-memory launch was needed. The earlier full
+  Electron timeout was still unresolved at that point; the later full rerun
+  above passed the gate while retaining three reported flaky cases.
+
+- Fixed capacity for zero-XP and low-rank weapons: the Update 38.5 base floor and
+  Mastery Rank contribution are now included. Missing XP is explicitly shown as
+  unchecked capacity. The later Tenet screenshot confirms wrong-polarity rounding.
+- Removed the assumption that every inventory polarity adds a new slot. The
+  advisor checks all possible replacements of innate polarities and uses the
+  highest drain. Ambiguous layouts display "Capacity at most". Actual drain can
+  be lower. This avoids double-counting without inventing original slot positions.
+- Drain uses exact assignment across equivalent polarity groups, with a cache
+  during each build search. Universal slots no longer halve Umbra mods. Slot
+  validation excludes negative/fractional/exilus indices, handles duplicate
+  records, and recognises cleared polarities.
+- Arcane eligibility no longer depends on XP or the Fit capacity toggle. Turning
+  the toggle off cannot recommend an arcane to a weapon without an unlocked slot.
+- Corrected stale English, German and Chinese caveats that claimed Rivens and
+  capacity were not included, and removed the unsupported promise that approximate
+  firing rates cannot affect mod ranking. Native translation review remains open.
+- Updated `damage-rules.md`, added the beta guide in `../features/builds.md`, and
+  prepared [the in-game checks](validation.md). The diagnostic script now accepts
+  wrapped inventories, fallback weapon names, target/stacks/capacity options and
+  structured JSON output. It defaults to stacks off for arsenal comparisons.
+- The site guide's screenshot is generated by the Builds E2E test and saved at
+  `.github/screenshots/docs-builds.png` for the site maintainer.
+  The guide is labelled development beta until a release version is assigned.
+- Updated `sharp` to 0.35.5 and its explicitly bundled Linux binding/libvips to
+  0.35.5/1.3.4 for GHSA-wq5f-xc86-pv6w. The production audit's high-severity gate
+  passes. One moderate `sprintf-js` advisory remains: the registry still lists
+  1.1.3 as latest, while the advisory names an unavailable 1.1.4 fix. Do not claim
+  the audit is completely clean.
+
+Remaining capacity limits: the drain assumes cheapest mod placement, does not
+solve element order against physical slots, and does not reserve exilus drain.
+Missing Mastery Rank uses the base capacity floor. Rank-40 and Legendary Rank
+capacity still need an in-game check for the low-rank/Legendary cases.
+
+### User screenshot follow-up (2026-10-10)
+
+Located the existing snapshot at
+`C:\Users\derek\Documents\code_projects\wfhelper-profile\api-helper\inventory.json`
+(saved October 5). Its MR 27 and Tenet Arca Plasmor config A match the supplied
+screenshots. The 28.6% Toxin bonus, rank-40 total capacity of 80, and nearest
+rounding for wrong-polarity drain (Cannonade 9 → 11) pass. Card drains including
+exilus total 72, matching 8/80 remaining. Visible stats match except critical
+damage: 5.4× shown versus 4.2× calculated. Follow-up screenshots show max-rank
+Tenacious Bond on Huras Kubrow; its conditional +1.2× final multiplier explains
+the difference exactly. The user then removed the companion: screenshot
+`Warframe.x64_bTXLrnxgI1.jpg` shows 4.2×, confirming the calculator's weapon-only
+value and resolving the discrepancy. The advisor excludes external companion buffs.
+The scrolled screenshot `Warframe.x64_i4lFT7FDbP.png` also matches Radiation
+2,584, Viral 4,727 and Total 15,353.1 (per-projectile sum × 2.1 multishot).
+This completes the modelled Arsenal stats comparison for this saved config;
+conditional damage and combat rankings remain unvalidated.
+See `validation.md` for the observations and their limits. No formula was changed.
+
+### Verification in this pass
+
+- Full unit suite after the dependency update: 419 files passed, 6,003 tests
+  passed and seven skipped. The advisor contributes 135 tests in nine files.
+- Worker typecheck and all 325 tests passed. All four app typechecks, Svelte
+  check (zero errors/warnings), lint, formatting, colour tokens, dead-code audit
+  and ONNX resource verification passed. The dead-code tool has an existing
+  unused-ignore configuration hint, not a failed check.
+- Production build passed with existing chunk-size/dynamic-import warnings.
+- Builds E2E: eight passed. The screenshots were inspected; the site screenshot
+  is saved as `.github/screenshots/docs-builds.png`.
+- Full Windows E2E at four workers: 350 clean passes, nine flaky passes and one
+  intentional overlay-stress skip. The command exited 1 because a worker timeout
+  was reported outside a test. This is **not a green full-suite result**.
+- All nine flaky cases passed serially with retries disabled (1.1 minutes).
+  They were filter customization, inventory card art, modular inventory, order
+  edit details, riven overlay resize, overlay interaction/settings, reward editor
+  tools and encrypted-session restore. Concurrency/startup timing is suspected,
+  not diagnosed. Full-run artifacts remain in `test-results`; the isolated run
+  is under `.tmp/build-advisor-validation/e2e-isolated`.
+- The diagnostic smoke passed for a wrapped inventory, default stacks-off
+  output, faction/stacks JSON, unknown weapon, invalid target and a fallback-only
+  weapon. Synthetic data is under `.tmp/build-advisor-validation`.
+- An unpacked Windows package built successfully using the installed native
+  dependencies (`--config.npmRebuild=false`). Its archive contains sharp 0.35.5.
+  Linux and installer upgrade acceptance have not been run on this Windows host.
+- Native DBWIN regression passed: 12 lines for 12 sends, clean shutdown and no
+  crash. Reward OCR passed all 35 gating screen/reader runs with Windows and ONNX
+  readers; absent private fixtures were skipped as designed. Riven OCR fixtures
+  passed, including the blank frame and weapon/stat identification.
+- Packaged runtime smoke passed: the setup view rendered, sharp generated an
+  image, both ONNX models loaded, and the process exited cleanly. Evidence is in
+  `test-results/packaged-1791650455161`.
+
+The later full Windows suite passed as recorded above; its flaky cases remain
+a reliability follow-up. Do not describe the isolated passes as a root-cause
+fix. The initial controlled Simulacrum comparison is also complete, within the
+limits recorded in `validation.md`. Future mechanics validation should use a
+simpler single-projectile weapon and an open, non-destructible firing lane to
+isolate effects. Linux and installer acceptance still require their respective
+environments before release. Changes remain local and uncommitted.
 
 ## What exists
 
@@ -26,7 +175,7 @@ and `reports/` the research the later work was built from.
 - **A script** for checking a gun from the command line:
   `node scripts/dev/advise-gun-build.cjs <inventory.json> "<weapon name>"` after
   `pnpm run build:main`.
-- **Tests.** Nine unit test files in `tests/main/buildAdvisor*.test.ts` and six
+- **Tests.** Nine unit test files in `tests/main/buildAdvisor*.test.ts` and eight
   end-to-end tests in `e2e/builds.spec.ts`.
 
 ## How far it can be trusted
@@ -79,14 +228,15 @@ Bugs found by checking against real data, all fixed:
 
 ## Next steps
 
-- Validate the target estimate in the Simulacrum for two or three builds.
+- Follow `validation.md`: first compare one Kuva/Tenet/Coda Upgrade screen and
+  polarity costs, then validate two or three builds in the Simulacrum.
 - The in-product agent that calls the advisor as a tool was deferred; see
   `../adr/0001-deterministic-build-calculator-before-any-agent.md`.
 - The German and Chinese strings for the Builds view were written without a
   native review.
 
-The section below is the build log: what was added after the first session, in
-order, with the detail behind each piece.
+The section below is the historical build log. The follow-up section above and
+`damage-rules.md` supersede its old capacity handling and validation claims.
 
 ## Research (added later on 2026-10-05)
 

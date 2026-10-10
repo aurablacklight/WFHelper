@@ -28,6 +28,8 @@ export type PlainGunStat =
 /** One bonus as a fraction: +165% is 1.65, -20% is -0.2. */
 export type ModEffect =
   | { stat: PlainGunStat; value: number }
+  /** Independent chance of a forced Slash proc on a critical hit. */
+  | { stat: "slashOnCritical"; value: number }
   | { stat: "typedDamage"; damageType: DamageType; value: number }
   /** "Fire Rate cannot be modified": every fire rate bonus on the build is void. */
   | { stat: "lockFireRate" };
@@ -49,6 +51,8 @@ export interface GunBaseStats {
 }
 
 export interface GunStats extends GunBaseStats {
+  /** Hunter Munitions proc chance per critical hit; absent means zero. */
+  slashOnCritical?: number;
   totalDamage: number;
   /** Base damage a projectile after base damage mods only; status ticks scale from it. */
   moddedBaseDamage: number;
@@ -93,12 +97,17 @@ export type GunBuildAdvice =
       arcane: AdvisedMod | null;
       stats: GunStats;
       /** True for bows and charge, held, burst and duplex weapons, whose damage
-       *  per second is an estimate; the mod ranking is not affected. */
+       *  per second and mod ranking depend on an approximate firing rate. */
       approximate: boolean;
       /** Set when the build was ranked against a faction. */
       versus: FactionDps | null;
       /** Mod capacity the build needs and the weapon has, when that is known. */
-      capacity: { used: number; total: number } | null;
+      capacity: {
+        used: number;
+        total: number;
+        /** The highest drain across possible layouts when innate slots are unknown. */
+        conservative: boolean;
+      } | null;
       unmodded: GunStats;
     }
   | { ok: false; reason: GunBuildAdviceFailure };

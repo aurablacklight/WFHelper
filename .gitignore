@@ -82,3 +82,4 @@ scripts/syndicates/
 
 # Local-only developer scripts.
 scripts/local/
+.firecrawl/

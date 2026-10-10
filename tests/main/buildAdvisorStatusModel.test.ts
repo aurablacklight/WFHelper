@@ -25,6 +25,58 @@ const stats = (overrides: Partial<GunStats>): GunStats => {
 };
 
 describe("targetDps", () => {
+  it.each([
+    [0, 0],
+    [0.5, 94.5],
+    [1, 189],
+    [1.5, 252],
+    [2, 315],
+  ])("weights Hunter Munitions by critical hits at %s crit chance", (criticalChance, expected) => {
+    const result = targetDps(
+      stats({
+        damage: { radiation: 100 },
+        statusChance: 0,
+        criticalChance,
+        criticalMultiplier: 3,
+        slashOnCritical: 0.3,
+      }),
+      "grineer",
+    );
+    // 100 base × .35 × 6 ticks × .3 roll. At 50% crit only half the hits
+    // qualify, each at 3×. At 150%, half are 3× and half 5×, all qualify.
+    expect(result.statusDps).toBeCloseTo(expected, 8);
+  });
+
+  it("adds forced bleeds alongside natural Slash without changing its proc rate", () => {
+    const base = stats({
+      damage: { slash: 100 },
+      statusChance: 1,
+      criticalChance: 1,
+      criticalMultiplier: 3,
+    });
+    const natural = targetDps(base, "grineer");
+    const combined = targetDps({ ...base, slashOnCritical: 0.3 }, "grineer");
+    expect(natural.statusDps).toBeCloseTo(630, 8);
+    expect(combined.statusDps - natural.statusDps).toBeCloseTo(189, 8);
+    expect(combined.directDps).toBe(natural.directDps);
+  });
+
+  it("scales forced bleeds with projectiles, fire rate and Viral, ignoring armour", () => {
+    const base = stats({
+      damage: { viral: 100 },
+      statusChance: 1,
+      criticalChance: 1,
+      criticalMultiplier: 3,
+      slashOnCritical: 0.3,
+      multishot: 2,
+      fireRate: 3,
+    });
+    const armoured = targetDps(base, "grineer");
+    const unarmoured = targetDps(base, "corpus");
+    expect(armoured.statusDps).toBeCloseTo(189 * 6 * armoured.viralMultiplier, 8);
+    expect(armoured.statusDps).toBe(unarmoured.statusDps);
+  });
+
   it("is the faction's type multiplier alone with no status and no armour", () => {
     // The Murmur resist viral and have no armour in the model.
     expect(targetDps(stats({ damage: { viral: 100 } }), "murmur")).toEqual({

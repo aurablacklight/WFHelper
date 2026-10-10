@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { parseModStats } from "../../services/buildAdvisor/modEffects";
 
 describe("parseModStats", () => {
+  it("reads Hunter Munitions at each rank even with stacks off", () => {
+    for (let rank = 0; rank <= 5; rank++) {
+      const chance = 5 * (rank + 1);
+      expect(parseModStats([`+${chance}% chance to apply <DT_SLASH_COLOR> on Critical`])).toEqual({
+        effects: [{ stat: "slashOnCritical", value: chance / 100 }],
+        ignored: [],
+        assumed: [],
+      });
+    }
+  });
+
   it("reads a base damage bonus as a fraction", () => {
     expect(parseModStats(["+165% Damage"])).toEqual({
       effects: [{ stat: "damage", value: 1.65 }],

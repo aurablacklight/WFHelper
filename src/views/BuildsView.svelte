@@ -408,13 +408,28 @@
               <span class="text-xs text-text-muted">{$tr("builds.recommendedTitle")}</span>
               {#if advice.capacity}
                 <span class="ml-auto text-xs text-text-secondary" data-builds-capacity>
-                  {$tr("builds.capacity", {
-                    used: String(advice.capacity.used),
-                    total: String(advice.capacity.total),
-                  })}
+                  {$tr(
+                    advice.capacity.conservative
+                      ? "builds.capacityConservative"
+                      : "builds.capacity",
+                    {
+                      used: String(advice.capacity.used),
+                      total: String(advice.capacity.total),
+                    },
+                  )}
                 </span>
               {/if}
             </div>
+
+            {#if advice.capacity?.conservative}
+              <p class="m-0 text-xs text-warning" data-builds-capacity-note>
+                {$tr("builds.capacityNote")}
+              </p>
+            {:else if fitCapacity && !advice.capacity}
+              <p class="m-0 text-xs text-warning" data-builds-capacity-note>
+                {$tr("builds.capacityUnknown")}
+              </p>
+            {/if}
 
             {#if recommended.length === 0}
               <p class="m-0 text-xs text-text-muted">{$tr("builds.noMods")}</p>

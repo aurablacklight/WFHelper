@@ -13,14 +13,14 @@ export interface SlottedMod {
 const UNIVERSAL: ReadonlySet<string> = new Set(["AP_ANY", "AP_UNIVERSAL"]);
 
 function matches(modPolarity: string | null, slotPolarity: string): boolean {
-  if (UNIVERSAL.has(slotPolarity)) return true;
+  if (UNIVERSAL.has(slotPolarity)) return modPolarity !== "AP_UMBRA";
   if (modPolarity === null) return false;
   return modPolarity === slotPolarity || UNIVERSAL.has(modPolarity);
 }
 
 /** Capacity one mod uses in one slot. The arsenal halves a match rounding up.
- *  For the wrong polarity the wiki's pages disagree on rounding; its Mod page
- *  table (a 5-drain mod costs 6) is followed here. */
+ *  Wrong polarity rounds to nearest: the 2026-10-10 Tenet Arca Plasmor
+ *  screenshot shows a 9-drain Cannonade costing 11, not 12. */
 export function slotCost(
   drain: number,
   modPolarity: string | null,
@@ -30,40 +30,66 @@ export function slotCost(
   return matches(modPolarity, slotPolarity) ? Math.ceil(drain / 2) : Math.round(drain * 1.25);
 }
 
-/** The least capacity the mods can use on a weapon with these slot polarities.
- *  Greedy: the costliest mods take matching slots, the next costliest take
- *  plain slots, and the cheapest are left to pay for a wrong polarity. */
+/** The least capacity over every placement. Equivalent slots are grouped so
+ *  the search visits counts of used polarities rather than slot permutations. */
 export function minimumDrain(
   mods: readonly SlottedMod[],
-  slotPolarities: readonly string[],
+  slotPolarities: readonly (string | null)[],
   slots = 8,
 ): number {
   if (mods.length > slots) return Infinity;
-  const polarised = slotPolarities.slice(0, slots);
-  const free = [...polarised];
-  let plain = slots - polarised.length;
-  let total = 0;
-
-  const unmatched: SlottedMod[] = [];
-  for (const mod of [...mods].sort((a, b) => b.drain - a.drain)) {
-    // An exact polarity first, so a universal slot is kept for a mod that needs it.
-    let at = free.findIndex((slot) => !UNIVERSAL.has(slot) && matches(mod.polarity, slot));
-    if (at < 0) at = free.findIndex((slot) => matches(mod.polarity, slot));
-    if (at < 0) {
-      unmatched.push(mod);
-      continue;
-    }
-    total += slotCost(mod.drain, mod.polarity, free[at]);
-    free.splice(at, 1);
+  const counts = new Map<string | null, number>();
+  for (let slot = 0; slot < slots; slot++) {
+    const polarity = slotPolarities[slot] ?? null;
+    counts.set(polarity, (counts.get(polarity) ?? 0) + 1);
   }
-
-  for (const mod of unmatched) {
-    if (plain > 0) {
-      plain--;
-      total += mod.drain;
-    } else {
-      total += slotCost(mod.drain, mod.polarity, free.pop() ?? null);
-    }
+  const groups = [...counts];
+  const weights: number[] = [];
+  let states = 1;
+  for (const [, count] of groups) {
+    weights.push(states);
+    states *= count + 1;
   }
-  return total;
+  const memo = new Float64Array(states).fill(-1);
+  const visit = (index: number, state: number): number => {
+    if (index === mods.length) return 0;
+    if (memo[state] >= 0) return memo[state];
+    let best = Infinity;
+    for (let group = 0; group < groups.length; group++) {
+      const [polarity, count] = groups[group];
+      const used = Math.floor(state / weights[group]) % (count + 1);
+      if (used === count) continue;
+      best = Math.min(
+        best,
+        slotCost(mods[index].drain, mods[index].polarity, polarity) +
+          visit(index + 1, state + weights[group]),
+      );
+    }
+    memo[state] = best;
+    return best;
+  };
+  return visit(0, 0);
+}
+
+/** Original slot positions are absent from the bundled data. An override may
+ *  replace an innate polarity or a plain slot, so keep every possible multiset.
+ *  The caller uses the highest drain to avoid relying on a replaced polarity. */
+export function possiblePolarities(
+  innate: readonly string[],
+  overrides: readonly (string | null)[],
+  slots = 8,
+): (string | null)[][] {
+  const originals = innate.slice(0, slots);
+  const changed = overrides.slice(0, slots);
+  const layouts = new Map<string, (string | null)[]>();
+  for (let mask = 0; mask < 2 ** originals.length; mask++) {
+    const kept = originals.filter((_, index) => (mask & (1 << index)) !== 0);
+    if (originals.length - kept.length > changed.length) continue;
+    if (kept.length + changed.length > slots) continue;
+    const layout = [...changed, ...kept];
+    while (layout.length < slots) layout.push(null);
+    layout.sort();
+    layouts.set(JSON.stringify(layout), layout);
+  }
+  return [...layouts.values()];
 }

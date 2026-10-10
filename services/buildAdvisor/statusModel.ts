@@ -102,6 +102,20 @@ export function targetDps(stats: GunStats, faction: AdvisorFaction): FactionDps 
   const averageCrit = 1 + stats.criticalChance * (stats.criticalMultiplier - 1);
   const bonus: DamageByType = stats.elementBonus;
   let statusDps = 0;
+  // Hunter Munitions only rolls on critical hits. Below 100% crit, weight the
+  // critical multiplier by crit probability, excluding non-critical hits.
+  // Above 100%, every hit rolls once; higher tiers affect damage, not proc chance.
+  const criticalWeight =
+    stats.criticalChance < 1 ? stats.criticalChance * stats.criticalMultiplier : averageCrit;
+  statusDps +=
+    stats.fireRate *
+    stats.multishot *
+    (stats.slashOnCritical ?? 0) *
+    criticalWeight *
+    TICKS_PER_PROC *
+    0.35 *
+    stats.moddedBaseDamage *
+    viral;
   for (const [type, share] of Object.entries(TICK_SHARE) as [DamageType, number][]) {
     const perProc =
       TICKS_PER_PROC * share * stats.moddedBaseDamage * (1 + (bonus[type] ?? 0)) * averageCrit;

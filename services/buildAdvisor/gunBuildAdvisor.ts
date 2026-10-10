@@ -27,7 +27,7 @@ import type {
 import { computeGunStats } from "./gunStats";
 import { parseArcaneRank } from "./arcaneEffects";
 
-import { minimumDrain, type SlottedMod } from "./modCapacity";
+import { minimumDrain, possiblePolarities, type SlottedMod } from "./modCapacity";
 import { rivenEffects } from "./rivenEffects";
 import { targetDps } from "./statusModel";
 import { parseModDescription, parseModStats } from "./modEffects";
@@ -78,7 +78,7 @@ export interface AdvisorGameData {
 const GUN_CATEGORIES = ["LongGuns", "Pistols"] as const;
 // The triggers whose shots a second are simply the fire rate. Charge, held,
 // burst and duplex weapons are built for too, with their figures marked
-// approximate: the mod ranking holds, the absolute damage per second may not.
+// approximate: both damage per second and the ranking depend on this estimate.
 const EXACT_TRIGGERS = new Set(["AUTO", "SEMI"]);
 const BOW_HOLSTER = "BOW";
 const BOW_CLASS_DIR = "/Bows/";
@@ -648,12 +648,24 @@ export function adviseGunBuild(
     : undefined;
   const valueOf = (stats: GunStats): number => (score ? score(stats) : stats.burstDps);
   const capacity = options.respectCapacity === false ? null : weaponCapacity(gun, weaponType, data);
+  const drainCache = new Map<string, number>();
+  const drainOf = (mods: readonly Candidate[]): number => {
+    if (!capacity) return 0;
+    const key = mods
+      .map((mod) => `${mod.polarity}:${mod.drain}`)
+      .sort()
+      .join(",");
+    const cached = drainCache.get(key);
+    if (cached !== undefined) return cached;
+    const drain = Math.max(...capacity.layouts.map((layout) => minimumDrain(mods, layout)));
+    drainCache.set(key, drain);
+    return drain;
+  };
   const limit = capacity
-    ? (mods: readonly Candidate[]): boolean =>
-        minimumDrain(mods, capacity.polarities) <= capacity.total
+    ? (mods: readonly Candidate[]): boolean => drainOf(mods) <= capacity.total
     : undefined;
   let build = findBestGunBuild(base, candidates, undefined, [], score, limit);
-  for (const type of capacity?.arcaneSlot === false ? [] : modelledArcanes(gun.weapon)) {
+  for (const type of hasArcaneSlot(gun, weaponType) ? modelledArcanes(gun.weapon) : []) {
     const rank = owned.get(type);
     const option = rank === undefined ? null : arcaneAtRank(type, rank, data, options);
     if (!option?.effects.length) continue;
@@ -708,7 +720,11 @@ export function adviseGunBuild(
     approximate: gun.approximate,
     versus: faction ? targetDps(build.stats, faction) : null,
     capacity: capacity
-      ? { used: minimumDrain(build.mods, capacity.polarities), total: capacity.total }
+      ? {
+          used: drainOf(build.mods),
+          total: capacity.total,
+          conservative: capacity.layouts.length > 1,
+        }
       : null,
     unmodded: computeGunStats(base, []),
   };
@@ -789,6 +805,7 @@ const POLARITY_TAGS: Readonly<Record<string, string>> = {
   unairu: "AP_WARD",
   penjaga: "AP_PRECEPT",
   umbra: "AP_UMBRA",
+  aura: "AP_ANY",
 };
 
 function bundledPolarities(): Record<string, readonly string[]> {
@@ -810,37 +827,53 @@ const DEFAULT_MAX_RANK = 30;
 
 interface WeaponCapacity {
   total: number;
-  /** Polarities of the eight mod slots, in no particular order. */
-  polarities: string[];
-  /** False when the weapon has no arcane slot unlocked. */
-  arcaneSlot: boolean;
+  /** Possible multisets of the eight regular slots after inventory overrides. */
+  layouts: (string | null)[][];
 }
 
-/** What the owned weapon can hold, or null when the inventory does not say.
- *  Built-in polarities and forma are added together; a forma that replaced a
- *  built-in polarity is therefore counted twice. */
+/** What the owned weapon can hold, or null when the inventory does not say. */
 function weaponCapacity(
   gun: OwnedGun,
   weaponType: string,
   data: AdvisorGameData,
 ): WeaponCapacity | null {
   const entry = asRecord(findGun(gun.inventory, weaponType));
-  const affinity = positive(entry?.XP);
-  if (!entry || affinity === null) return null;
+  const affinity: unknown = entry?.XP;
+  if (!entry || typeof affinity !== "number" || !Number.isFinite(affinity) || affinity < 0)
+    return null;
   const maxRank = positive(gun.weapon.maxLevelCap) ?? DEFAULT_MAX_RANK;
   const rank = Math.min(maxRank, Math.floor(Math.sqrt(affinity / AFFINITY_PER_RANK_SQUARED)));
   const features = typeof entry.Features === "number" ? entry.Features : 0;
+
+  // Update 38.5: base 15 plus one per two Mastery Ranks; Legendary Ranks add
+  // one each. Missing mastery uses the base floor, never unlimited capacity.
+  const mastery = Math.floor(positive(gun.inventory.PlayerLevel) ?? 0);
+  const masteryCapacity = 15 + Math.floor(Math.min(mastery, 30) / 2) + Math.max(0, mastery - 30);
+  const available = Math.min(maxRank, Math.max(rank, masteryCapacity));
 
   const polarities = (data.polarities[weaponType] ?? []).flatMap(
     (name) => POLARITY_TAGS[name] ?? [],
   );
   const forma: unknown = entry.Polarity;
+  const overrides = new Map<number, string | null>();
   for (const raw of Array.isArray(forma) ? forma.slice(0, 16) : []) {
     const slot = asRecord(raw);
     if (typeof slot?.Value !== "string" || typeof slot.Slot !== "number") continue;
-    if (slot.Slot < GUN_MOD_SLOTS) polarities.push(slot.Value);
+    if (!Number.isInteger(slot.Slot) || slot.Slot < 0 || slot.Slot >= GUN_MOD_SLOTS) continue;
+    overrides.set(slot.Slot, slot.Value === "AP_NONE" ? null : slot.Value);
   }
 
+  return {
+    total: available * ((features & FEATURE_CATALYST) !== 0 ? 2 : 1),
+    layouts: possiblePolarities(polarities, [...overrides.values()], GUN_MOD_SLOTS),
+  };
+}
+
+// Adapter eligibility is independent of XP and the capacity toggle.
+function hasArcaneSlot(gun: OwnedGun, weaponType: string): boolean {
+  const entry = asRecord(findGun(gun.inventory, weaponType));
+  if (!entry) return false;
+  const features = typeof entry.Features === "number" ? entry.Features : 0;
   const configs: unknown = entry.Configs;
   const arcaneEquipped =
     Array.isArray(configs) &&
@@ -850,11 +883,7 @@ function weaponCapacity(
         Array.isArray(refs) && typeof refs[GUN_ARCANE_SLOT] === "string" && refs[GUN_ARCANE_SLOT]
       );
     });
-  return {
-    total: rank * ((features & FEATURE_CATALYST) !== 0 ? 2 : 1),
-    polarities: polarities.slice(0, GUN_MOD_SLOTS),
-    arcaneSlot: (features & FEATURE_ARCANE_ADAPTER) !== 0 || arcaneEquipped,
-  };
+  return (features & FEATURE_ARCANE_ADAPTER) !== 0 || arcaneEquipped;
 }
 
 const RIVEN_ID = "riven:";
@@ -908,7 +937,8 @@ const BONUS_MAX = 0.6;
 const BONUS_ROLL_MAX = 0x3fffffff;
 
 /** The bonus element stored on the weapon. The 25% to 60% range is the wiki's;
- *  reading the stored integer as a straight line across it is unverified. */
+ *  Linear decoding matches one Tenet Arca Plasmor screenshot (28.6% Toxin,
+ *  2026-10-10); other rolls and the endpoints still need game checks. */
 function progenitorBonus(entry: unknown): AdvisedWeapon["bonus"] {
   const gun = asRecord(entry);
   if (typeof gun?.UpgradeType !== "string" || !gun.UpgradeType.endsWith(BONUS_UPGRADE)) return null;

@@ -103,9 +103,11 @@ export function computeGunStats(
     magazineCapacity: 0,
   };
   let fireRateLocked = false;
+  let slashOnCritical = 0;
   for (const effects of mods) {
     for (const effect of effects) {
       if (effect.stat === "lockFireRate") fireRateLocked = true;
+      else if (effect.stat === "slashOnCritical") slashOnCritical += effect.value;
       else if (effect.stat !== "typedDamage") bonus[effect.stat] += effect.value;
     }
   }
@@ -131,6 +133,7 @@ export function computeGunStats(
 
   return {
     damage,
+    slashOnCritical: Math.min(1, Math.max(0, slashOnCritical)),
     totalDamage,
     moddedBaseDamage: baseTotal,
     elementBonus,

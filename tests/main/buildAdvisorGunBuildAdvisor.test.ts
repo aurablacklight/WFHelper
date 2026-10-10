@@ -584,7 +584,7 @@ describe("Rivens", () => {
     });
     const advice = adviseGunBuild(owned, RIFLE, withRiven);
     if (!advice.ok) throw new Error(advice.reason);
-    expect(advice.capacity).toEqual({ used: 18, total: 30 });
+    expect(advice.capacity).toEqual({ used: 18, total: 30, conservative: false });
   });
 
   it("counts a Riven equipped on a saved config", () => {
@@ -614,13 +614,13 @@ describe("mod capacity", () => {
     // beats the galvanized mod with only the free flawed damage mod beside it.
     const advice = adviseGunBuild(gunWith({ Features: 0 }), RIFLE, data);
     expect(names(advice)).toEqual(["Fixture Chamber", "Fixture Serration"]);
-    if (advice.ok) expect(advice.capacity).toEqual({ used: 29, total: 30 });
+    if (advice.ok) expect(advice.capacity).toEqual({ used: 29, total: 30, conservative: false });
   });
 
   it("doubles capacity for a weapon with a catalyst", () => {
     const advice = adviseGunBuild(gunWith({ Features: 1 }), RIFLE, data);
     expect(names(advice)).toEqual(["Fixture Serration", "Galvanized Fixture Chamber"]);
-    if (advice.ok) expect(advice.capacity).toEqual({ used: 35, total: 60 });
+    if (advice.ok) expect(advice.capacity).toEqual({ used: 35, total: 60, conservative: false });
   });
 
   it("halves mods on the polarities forma has added", () => {
@@ -631,7 +631,7 @@ describe("mod capacity", () => {
     const advice = adviseGunBuild(gunWith({ Features: 0, Polarity }), RIFLE, data);
     // 20 -> 10 and 15 -> 8.
     expect(names(advice)).toEqual(["Fixture Serration", "Galvanized Fixture Chamber"]);
-    if (advice.ok) expect(advice.capacity).toEqual({ used: 18, total: 30 });
+    if (advice.ok) expect(advice.capacity).toEqual({ used: 18, total: 30, conservative: false });
   });
 
   it("counts the polarities the weapon comes with", () => {
@@ -639,16 +639,87 @@ describe("mod capacity", () => {
     const advice = adviseGunBuild(gunWith({ Features: 0 }), RIFLE, withInnate);
     // The costlier mod takes the slot: 20 -> 10, plus 15.
     expect(names(advice)).toEqual(["Fixture Serration", "Galvanized Fixture Chamber"]);
-    if (advice.ok) expect(advice.capacity).toEqual({ used: 25, total: 30 });
+    if (advice.ok) expect(advice.capacity).toEqual({ used: 25, total: 30, conservative: false });
   });
 
   it("uses the weapon's rank when it is not yet 30", () => {
-    // Rank 10 is 50,000 affinity: 20 capacity with a catalyst. The galvanized mod
-    // (15) fits and the rank 2 damage mod (20) does not fit beside it; the flawed
-    // damage mod has no drain in the fixture, so it comes along.
+    // Rank 10 is 50,000 affinity, below the base capacity of 15. A catalyst
+    // doubles the base floor to 30, so the 20 + 9 build still fits.
     const advice = adviseGunBuild(gunWith({ XP: 50_000, Features: 1 }), RIFLE, data);
-    expect(names(advice)).toEqual(["Flawed Fixture Serration", "Galvanized Fixture Chamber"]);
-    if (advice.ok) expect(advice.capacity).toEqual({ used: 15, total: 20 });
+    expect(names(advice)).toEqual(["Fixture Chamber", "Fixture Serration"]);
+    if (advice.ok) expect(advice.capacity).toEqual({ used: 29, total: 30, conservative: false });
+  });
+
+  it.each([
+    [0, 0, 15],
+    [4, 0, 17],
+    [5, 0, 17],
+    [4, 1, 34],
+    [30, 1, 60],
+    [35, 1, 60],
+  ])(
+    "uses minimum capacity for an unranked weapon at MR %i with features %i",
+    (mastery, features, total) => {
+      const advice = adviseGunBuild(
+        { ...gunWith({ XP: 0, Features: features }), PlayerLevel: mastery },
+        RIFLE,
+        data,
+      );
+      if (!advice.ok) throw new Error(advice.reason);
+      expect(advice.capacity?.total).toBe(total);
+      expect(advice.capacity?.used).toBeLessThanOrEqual(total);
+    },
+  );
+
+  it("uses Legendary Rank capacity on a weapon that can reach rank 40", () => {
+    const extended = {
+      ...data,
+      weapons: { ...data.weapons, [RIFLE]: weapon({ maxLevelCap: 40 }) },
+    };
+    const advice = adviseGunBuild(
+      { ...gunWith({ XP: 0, Features: 1 }), PlayerLevel: 35 },
+      RIFLE,
+      extended,
+    );
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.capacity?.total).toBe(70);
+  });
+
+  it("does not count an innate polarity twice when Forma may have replaced it", () => {
+    const withInnate = { ...data, polarities: { [RIFLE]: ["madurai"] } };
+    const advice = adviseGunBuild(
+      gunWith({ Polarity: [{ Slot: 0, Value: "AP_ATTACK" }] }),
+      RIFLE,
+      withInnate,
+    );
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(names(advice)).toEqual(["Fixture Serration", "Galvanized Fixture Chamber"]);
+    expect(advice.capacity).toEqual({ used: 25, total: 30, conservative: true });
+  });
+
+  it("fits even when Forma may have replaced the only matching innate polarity", () => {
+    const withInnate = { ...data, polarities: { [RIFLE]: ["madurai"] } };
+    const advice = adviseGunBuild(
+      gunWith({ Polarity: [{ Slot: 0, Value: "AP_DEFENSE" }] }),
+      RIFLE,
+      withInnate,
+    );
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(names(advice)).toEqual(["Fixture Chamber", "Fixture Serration"]);
+    expect(advice.capacity).toEqual({ used: 29, total: 30, conservative: true });
+  });
+
+  it("reads each valid regular slot once and recognises removed polarities", () => {
+    const Polarity = [
+      { Slot: -1, Value: "AP_ATTACK" },
+      { Slot: 0.5, Value: "AP_ATTACK" },
+      { Slot: 8, Value: "AP_ATTACK" },
+      { Slot: 0, Value: "AP_ATTACK" },
+      { Slot: 0, Value: "AP_NONE" },
+    ];
+    const advice = adviseGunBuild(gunWith({ Polarity }), RIFLE, data);
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.capacity).toEqual({ used: 29, total: 30, conservative: false });
   });
 
   it("ignores capacity when asked to", () => {
@@ -681,6 +752,42 @@ describe("mod capacity", () => {
     if (!without.ok || !withAdapter.ok) throw new Error("advice failed");
     expect(without.arcane).toBeNull();
     expect(withAdapter.arcane?.type).toBe(MERCILESS);
+  });
+
+  it.each([undefined, 0, 450_000])(
+    "keeps arcane eligibility independent of XP %s and the capacity toggle",
+    (XP) => {
+      for (const respectCapacity of [true, false]) {
+        for (const Features of [1, 33]) {
+          const advice = adviseGunBuild(
+            inventory({
+              LongGuns: [{ ItemId: id(100), ItemType: RIFLE, XP, Features }],
+              Upgrades: [ranked(9, MERCILESS, 1)],
+            }),
+            RIFLE,
+            data,
+            { assumeConditionals: true, respectCapacity },
+          );
+          if (!advice.ok) throw new Error(advice.reason);
+          expect(advice.arcane?.type ?? null).toBe(Features === 33 ? MERCILESS : null);
+        }
+      }
+    },
+  );
+
+  it("accepts an equipped arcane as evidence of an unlocked slot without XP or feature flags", () => {
+    const refs = Array<string>(10).fill("");
+    refs[9] = id(9).$oid;
+    const advice = adviseGunBuild(
+      inventory({
+        LongGuns: [{ ItemId: id(100), ItemType: RIFLE, Configs: [{ Upgrades: refs }] }],
+        Upgrades: [ranked(9, MERCILESS, 1)],
+      }),
+      RIFLE,
+      data,
+    );
+    if (!advice.ok) throw new Error(advice.reason);
+    expect(advice.arcane?.type).toBe(MERCILESS);
   });
 });
 
@@ -768,6 +875,7 @@ describe("ranking against a faction", () => {
 describe("weapon arcanes", () => {
   const withArcane = (arcane: string, rank = 1) =>
     inventory({
+      LongGuns: [{ ItemId: id(100), ItemType: RIFLE, Features: 32 }],
       Upgrades: [ranked(2, DAMAGE, 2), ranked(3, MULTISHOT_GALVANIZED, 0), ranked(9, arcane, rank)],
     });
 

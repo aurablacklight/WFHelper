@@ -46,6 +46,8 @@ test.describe("Build advisor", () => {
           // Rank 30 with a catalyst and an arcane adapter: 60 capacity.
           XP: 450_000,
           Features: 33,
+          // This may replace the innate attack polarity; do not count both.
+          Polarity: [{ Slot: 0, Value: "AP_ATTACK" }],
           Configs: [{ Upgrades: [id(1).$oid] }, {}, {}],
         },
       ],
@@ -89,6 +91,10 @@ test.describe("Build advisor", () => {
     // Hornet Strike (14) halves on Lex Prime's built-in attack polarity; the
     // galvanized mod costs 14.
     await expect(page.locator("[data-builds-capacity]")).toContainText("21/60");
+    await expect(page.locator("[data-builds-capacity]")).toContainText("at most");
+    await expect(page.locator("[data-builds-capacity-note]")).toContainText(
+      "original polarity positions are unknown",
+    );
 
     // Puncture 144 with +220% and the arcane's +360% (6.8x); config A has +220% only.
     await expect(stat("puncture")).toHaveText(["Puncture", "979.2", "460.8"]);
@@ -132,6 +138,24 @@ test.describe("Build advisor", () => {
 
     await target.selectOption("");
     await expect(stat("burstVs")).toHaveCount(0);
+  });
+
+  test("turning capacity off hides its estimate without removing an unlocked arcane", async () => {
+    await page.locator(`[data-builds-gun="${LEX_PRIME}"]`).click();
+    await expect(page.locator("[data-builds-capacity-note]")).toBeVisible();
+    await page.locator("[data-builds-fit]").click();
+    await expect(page.locator("[data-builds-capacity]")).toHaveCount(0);
+    await expect(page.locator("[data-builds-capacity-note]")).toHaveCount(0);
+    await expect(page.locator("[data-builds-arcane]")).toHaveCount(1);
+    await page.locator("[data-builds-fit]").click();
+    await expect(page.locator("[data-builds-capacity]")).toContainText("21/60");
+  });
+
+  test("explains when an imported gun has no usable capacity data", async () => {
+    await page.locator(`[data-builds-gun="${TRUMNA_PRIME}"]`).click();
+    await expect(page.locator("[data-builds-capacity]")).toHaveCount(0);
+    await expect(page.locator("[data-builds-capacity-note]")).toContainText("no usable weapon XP");
+    await page.screenshot({ path: test.info().outputPath("builds-missing-capacity.png") });
   });
 
   test("a weapon the advisor cannot build for says why", async () => {
