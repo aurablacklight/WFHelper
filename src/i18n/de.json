@@ -1,4 +1,6 @@
 {
+  "appearance.buildsFontSize": "Schriftgröße für Builds",
+  "appearance.buildsFontSizeHint": "Waffenliste, Mod-Details und Wertetabelle. Standard: 16 px.",
   "settings.notificationCustomSound": "Eigener Benachrichtigungston",
   "settings.notificationSoundChoose": "Ton auswählen",
   "settings.notificationSoundFileHint": "WAV, MP3 oder OGG, bis zu 5 MiB und 30 Sekunden. WFHelper speichert eine Kopie, sodass du die Originaldatei verschieben kannst.",

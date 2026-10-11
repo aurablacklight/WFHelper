@@ -6,6 +6,7 @@
   import ViewOverridesSection from "./ViewOverridesSection.svelte";
   import StyleSection from "./StyleSection.svelte";
   import FontSizeSection from "./FontSizeSection.svelte";
+  import BuildsFontSizeSection from "./BuildsFontSizeSection.svelte";
   import AppScaleSection from "./AppScaleSection.svelte";
   import ThemedControlCard from "../ThemedControlCard.svelte";
   import SettingsSection from "./SettingsSection.svelte";
@@ -34,6 +35,7 @@
   <SettingsSection class="appearance-card">
     <AppScaleSection />
     <FontSizeSection />
+    <BuildsFontSizeSection />
   </SettingsSection>
 {:else}
   <SettingsSection class="appearance-card">

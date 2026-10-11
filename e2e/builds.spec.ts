@@ -67,6 +67,61 @@ test.describe("Build advisor", () => {
 
   const stat = (key: string) => page.locator(`[data-builds-stat="${key}"] td`);
 
+  test("Builds font size defaults to 16 px and persists settings choices", async () => {
+    const openSettings = async () => {
+      await openView(page, "settings");
+      await page.locator('[data-tour-tab="appearance"]').click();
+      await page.locator('[data-appearance-tab="theme"]').click();
+    };
+    const checkSize = async (size: number) => {
+      await openView(page, "builds");
+      const gun = page.locator(`[data-builds-gun="${LEX_PRIME}"]`);
+      await gun.click();
+      await expect(gun).toHaveCSS("font-size", `${size}px`);
+      await expect(stat("total").first()).toHaveCSS("font-size", `${size}px`);
+      await expect(page.locator("[data-builds-assumed]").first()).toHaveCSS(
+        "font-size",
+        `${size}px`,
+      );
+      await expect(page.locator("[data-builds-mod-wiki] button").first()).toHaveCSS(
+        "font-size",
+        `${size}px`,
+      );
+    };
+
+    await checkSize(16);
+    for (const size of [14, 18, 20]) {
+      await openSettings();
+      await page
+        .getByRole("combobox", { name: "Builds font size", exact: true })
+        .selectOption(String(size));
+      await checkSize(size);
+    }
+    await page.reload();
+    await checkSize(20);
+    await openSettings();
+    await expect(page.locator("[data-builds-font-size]")).toHaveValue("20");
+    await checkSize(20);
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.screenshot({ path: test.info().outputPath("builds-font-20-wide.png") });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect
+      .poll(() =>
+        page
+          .locator("[data-builds-view]")
+          .evaluate((element) => element.scrollWidth <= element.clientWidth),
+      )
+      .toBe(true);
+    await page.screenshot({ path: test.info().outputPath("builds-font-20.png") });
+    await page.locator("[data-builds-stats]").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("builds-font-20-stats.png") });
+    await openSettings();
+    await page.locator("[data-builds-font-size]").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("builds-font-setting.png") });
+    await page.locator("[data-builds-font-size]").selectOption("16");
+    await checkSize(16);
+  });
+
   test.beforeEach(async () => {
     await openView(page, "builds");
     await expect(page.locator("[data-builds-view]")).toBeVisible({ timeout: 30_000 });

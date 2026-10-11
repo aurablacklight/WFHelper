@@ -1,4 +1,6 @@
 {
+  "appearance.buildsFontSize": "Builds font size",
+  "appearance.buildsFontSizeHint": "Weapon list, mod details and stats table. Default: 16 px.",
   "settings.notificationCustomSound": "Custom notification sound",
   "settings.notificationSoundChoose": "Choose sound",
   "settings.notificationSoundFileHint": "WAV, MP3 or OGG, up to 5 MiB and 30 seconds. WFHelper keeps a copy, so moving the original file is safe.",

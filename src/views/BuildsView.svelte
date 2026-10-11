@@ -3,6 +3,7 @@
   import { locale, tr, type MessageKey } from "../lib/i18n.js";
   import { invoke } from "../lib/ipc.js";
   import { inventoryData, itemDb } from "../stores/data.js";
+  import { buildsFontSize } from "../stores/buildsFontSize.js";
   import ItemImage from "../components/ItemImage.svelte";
   import BuildModPreview from "../components/BuildModPreview.svelte";
   import RivenPolarityIcon from "../components/RivenPolarityIcon.svelte";
@@ -280,11 +281,15 @@
   );
 </script>
 
-<section class="view active" data-builds-view>
+<section
+  class="view active builds-view"
+  style:--builds-font-size={`${$buildsFontSize}px`}
+  data-builds-view
+>
   <div class="view-header">
     <h2>{$tr("common.builds")}</h2>
     <span class="text-xs text-text-muted">{$tr("builds.hint")}</span>
-    <div class="ml-auto flex items-center gap-2">
+    <div class="ml-auto flex flex-wrap items-center gap-2">
       <label
         class="flex items-center gap-1.5 text-xs text-text-muted"
         title={$tr("builds.targetHint")}
@@ -345,7 +350,7 @@
                   {#each groupGuns as gun (gun.type)}
                     <button
                       type="button"
-                      class="gun-row flex items-center gap-2 rounded-[var(--radius-md)] px-2 py-1 text-left text-xs"
+                      class="gun-row flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] px-2 py-1 text-left text-xs"
                       class:gun-row-active={gun.type === selectedType}
                       aria-pressed={gun.type === selectedType}
                       data-builds-gun={gun.type}
@@ -360,7 +365,7 @@
                         />
                       </span>
                       <span
-                        class="flex-1 truncate {gun.unsupported
+                        class="min-w-0 flex-1 break-words {gun.unsupported
                           ? 'text-text-muted'
                           : 'text-text-secondary'}"
                         title={gun.name}
@@ -368,7 +373,7 @@
                         {db[gun.type]?.displayName ?? gun.name}
                       </span>
                       {#if gun.unsupported}
-                        <span class="whitespace-nowrap text-[0.65rem] text-text-muted">
+                        <span class="w-full pl-8 text-xs text-text-muted">
                           {$tr("builds.notSupported")}
                         </span>
                       {/if}
@@ -452,7 +457,7 @@
             {#if recommended.length === 0}
               <p class="m-0 text-xs text-text-muted">{$tr("builds.noMods")}</p>
             {:else}
-              <ul class="m-0 grid list-none grid-cols-1 gap-2 p-0 xl:grid-cols-2">
+              <ul class="mod-grid m-0 grid list-none gap-2 p-0">
                 {#each recommended as mod (mod.type)}
                   <li
                     class="flex items-start gap-2 border-t border-[color:var(--ui-panel-border)] pt-2"
@@ -470,7 +475,10 @@
                     />
                     <div class="flex min-w-0 flex-1 flex-col gap-1">
                       <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                        <span class="truncate font-semibold text-text-secondary" title={mod.name}>
+                        <span
+                          class="break-words font-semibold text-text-secondary"
+                          title={mod.name}
+                        >
                           {db[mod.type]?.displayName ?? mod.name}
                         </span>
                         {#if !mod.isArcane}
@@ -599,10 +607,27 @@
 </section>
 
 <style>
+  .builds-view {
+    font-size: var(--builds-font-size);
+    line-height: 1.5;
+  }
+  /* Include shared controls and popover text without changing other views. */
+  .builds-view :global(:is(.text-xs, .text-sm, [class~="text-[0.7rem]"], button, input, select)) {
+    font-size: var(--builds-font-size);
+    line-height: 1.5;
+  }
+  .builds-view :global(select),
+  .builds-view :global(input) {
+    height: auto;
+    min-height: 2em;
+  }
   .gun-row {
     border: 1px solid transparent;
     background: transparent;
     cursor: pointer;
+  }
+  .mod-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24em), 1fr));
   }
   .gun-row:hover {
     border-color: var(--ui-control-border);

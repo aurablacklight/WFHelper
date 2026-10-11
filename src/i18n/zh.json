@@ -1,4 +1,6 @@
 {
+  "appearance.buildsFontSize": "配装字号",
+  "appearance.buildsFontSizeHint": "武器列表、Mod 详情和属性表。默认：16 px。",
   "common.parentItemOwned": "已拥有所属装备",
   "common.parentOwned": "已拥有主物品",
   "common.parentReadyToClaim": "所属装备已在锻造厂制造完成，可以领取",
