@@ -36,6 +36,7 @@ type Updater = typeof import("../../services/autoUpdater");
 
 const realExecPath = process.execPath;
 const realResourcesPath = process.resourcesPath;
+const realPlatform = process.platform;
 let appDir: string;
 
 function placeApp(installed: boolean): void {
@@ -72,6 +73,7 @@ describe("auto-updater", () => {
   afterEach(() => {
     vi.useRealTimers();
     Object.defineProperty(process, "execPath", { value: realExecPath, configurable: true });
+    Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
     Object.defineProperty(process, "resourcesPath", {
       value: realResourcesPath,
       configurable: true,
@@ -109,6 +111,8 @@ describe("auto-updater", () => {
   });
 
   it("does not offer updates from a copy that was never installed", async () => {
+    // The uninstaller check is NSIS-specific, so it only runs on Windows.
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
     const updater = await start(false);
 
     expect(updater.getUpdateState().status).toBe("disabled");
