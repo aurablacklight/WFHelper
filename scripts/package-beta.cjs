@@ -36,6 +36,9 @@ function run(script, args = []) {
   execFileSync(process.execPath, [script, ...args], { stdio: "inherit", env });
 }
 async function main() {
+  // tsc never deletes outputs whose sources are gone, so a reused .electron-build
+  // ships files removed from the repo (beta.5 first caught the old de/zh catalogues).
+  fs.rmSync(path.join(root, ".electron-build"), { recursive: true, force: true });
   run("scripts/verify-onnx-models.mjs");
   run("node_modules/typescript/bin/tsc", ["-p", "tsconfig.main.json"]);
   run("scripts/bundle-preloads.js");

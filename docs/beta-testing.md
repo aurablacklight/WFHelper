@@ -101,3 +101,40 @@ node scripts/serve-beta-feed.mjs release/beta-local/0.1.0-beta.3
 ```
 
 Local builds are for this rehearsal only; friends need the non-local build.
+
+## Installed update with a taskbar pin
+
+After publishing, check the real path a friend takes: the installed app, opened from
+a taskbar pin, updating from the public feed. Close Warframe and run:
+
+```powershell
+node scripts/test-installed-update.mjs 0.1.0-beta.4 0.1.0-beta.5
+```
+
+It updates this machine's installed WFHelper Beta. It checks that the pin opens
+`%LOCALAPPDATA%\Programs\WFHelper Beta\WFHelper Beta.exe`, waits for the startup
+check to open the update dialog, downloads, restarts, and confirms the installer
+relaunched the installed exe, the pin still targets it, opening the pin starts the
+new version, and the update check reports Up To Date. Screenshots and a log are
+saved under `.tmp/installed-update-test`.
+
+Pin the app from the Start menu or the running installed app, never from a
+`release/beta/<version>/win-unpacked` folder. Those copies are packager output, not
+installs. Updates install into the real install folder, so a pinned unpacked copy
+keeps reopening the old version and offers the same update forever. Since beta.6
+an uninstalled copy turns its updater off and says so instead.
+
+### 2026-10-17: beta.4 to beta.5
+
+- The owner's beta.3 update loop came from the taskbar pin and Start menu
+  shortcut targeting `release\beta\0.1.0-beta.3\win-unpacked\WFHelper Beta.exe`.
+  The updater had already installed beta.4 correctly; every relaunch opened the
+  unpacked beta.3. Repointing both shortcuts at the installed exe fixed it.
+- The installed beta.4 to beta.5 run then passed: release notes showed in the
+  dialog, the installer relaunched the installed exe, the pin target was unchanged,
+  opening the pin started beta.5, and the check reported Up To Date.
+- A download finished within the first 8 seconds was reset to "available" by the
+  startup check, hiding Restart & install until the user clicked Download again.
+  Background checks now leave a downloading or downloaded update alone.
+- The first beta.5 build packaged stale German and Chinese catalogues left in
+  `.electron-build`. The packager now clears that folder before building.
