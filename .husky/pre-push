@@ -1,3 +1,3 @@
-# Fast local feedback; full validation and all Windows UI shards run in CI.
+# Fast local feedback (no Electron UI specs unless WFH_PUSH_E2E=1); full validation and all Windows UI shards run in CI.
 set -e
 node scripts/check-push.mjs

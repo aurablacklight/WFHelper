@@ -84,7 +84,12 @@ for (const config of [
   run("node_modules/typescript/bin/tsc", ["-p", config, "--noEmit"]);
 run("node_modules/svelte-check/bin/svelte-check", ["--tsconfig", "tsconfig.json"]);
 run("node_modules/vitest/vitest.mjs", ["run"]);
-if (process.platform === "win32" && e2e.size) {
+// Local UI specs are opt-in: they launch Electron, and two of them crash on exit
+// while Warframe is running. CI runs every shard on each PR.
+const localE2e = process.env.WFH_PUSH_E2E === "1";
+if (process.platform === "win32" && e2e.size && !localE2e)
+  console.log("Skipping local UI specs; set WFH_PUSH_E2E=1 to run them before pushing.");
+if (process.platform === "win32" && e2e.size && localE2e) {
   run("node_modules/typescript/bin/tsc", ["-p", "tsconfig.main.json"]);
   run("scripts/bundle-preloads.js");
   run("node_modules/vite/bin/vite.js", ["build"]);

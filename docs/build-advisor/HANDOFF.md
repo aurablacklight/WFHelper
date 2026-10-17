@@ -382,11 +382,11 @@ backend/worker ci` once or the pre-push hook fails at the worker tests.
 - Run the app from source on a throwaway profile:
   `$env:WFHELPER_USER_DATA = "<folder>"; pnpm run dev`. The inventory lands in
   `<folder>\api-helper\inventory.json`.
-- Close Warframe before pushing. With the game running, two Playwright tests
-  (`smoke.spec.ts` "keeps one process and restores its window" and
-  `setup-wizard.spec.ts` "survives a reload") fail with Electron exiting 134,
-  on untouched `main` as well. Both pass with the game closed. The cause was
-  not investigated further.
+- With Warframe running, two Playwright tests (`smoke.spec.ts` "keeps one
+  process and restores its window" and `setup-wizard.spec.ts` "survives a
+  reload") fail with Electron exiting 134, on untouched `main` as well. Both
+  pass with the game closed. Local pushes skip UI specs unless
+  `WFH_PUSH_E2E=1`; CI runs them.
 
 ## Standing rules
 
