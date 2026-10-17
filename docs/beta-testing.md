@@ -53,7 +53,10 @@ uses the upstream release feed. Check updates, Download, and Restart to update
 use the existing application flow. Development launches still disable updates.
 
 For each subsequent beta, increment the version (for example `0.1.0-beta.2`),
-build, and run the packaged smoke check. Upload the newly versioned `.exe` and
+write its update notes in `docs/beta-notes/<version>.md`, build, and run the
+packaged smoke check. The packager copies those notes into `beta.yml`, which is
+what the in-app "What's new" dialog shows; it does not read the GitHub release
+page, and a shareable build refuses to package without the notes file. Upload the newly versioned `.exe` and
 `.exe.blockmap` first. Replace `beta.yml` last so it never advertises a missing
 installer. Keep previous installers available while users may be downloading
 them. Never replace an installer under an existing versioned filename.

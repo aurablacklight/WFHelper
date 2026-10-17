@@ -16,6 +16,12 @@ if (process.platform !== "win32") throw new Error("This beta packager targets Wi
 const root = path.resolve(__dirname, "..");
 process.chdir(root);
 const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+// The updater shows releaseNotes from beta.yml; the GitHub release page is not read.
+const notesPath = path.join("docs", "beta-notes", `${version}.md`);
+const releaseNotes = fs.existsSync(notesPath) ? fs.readFileSync(notesPath, "utf8").trim() : "";
+if (!local && !releaseNotes) {
+  throw new Error(`Write the update notes for ${version} in ${notesPath} first.`);
+}
 // The backend answers per-item price, meta and order-summary requests only with a
 // bootstrap token; without this flag those requests get 401 and fall back to slow
 // direct warframe.market calls or no price at all.
@@ -66,6 +72,7 @@ async function main() {
       },
     ],
     generateUpdatesFilesForAllChannels: false,
+    ...(releaseNotes ? { releaseInfo: { releaseNotes } } : {}),
   };
   // An explicit file avoids electron-builder merging this feed into the
   // production publish entry from package.json.
