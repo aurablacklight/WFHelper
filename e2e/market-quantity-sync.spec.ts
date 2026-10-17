@@ -102,6 +102,8 @@ interface QuantitySyncFixture {
 type FixtureGlobal = typeof globalThis & { quantitySyncFixture: QuantitySyncFixture };
 
 test.describe("Market quantity sync", () => {
+  // The second-run test relies on the first run's sync; a retry must replay both.
+  test.describe.configure({ mode: "serial" });
   test.setTimeout(240_000);
 
   let app: ElectronApplication;
