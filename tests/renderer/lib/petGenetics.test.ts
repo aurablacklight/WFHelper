@@ -221,12 +221,10 @@ describe("resolvePetTrait", () => {
       label: "Ash Grey",
       hex: "#868f8c",
     });
-    expect(resolvePetTrait("base", ASH_GREY, "de", translate)?.label).toBe("Ash-Grau");
     expect(resolvePetTrait("secondary", ALAD_BLUE, "en", translate)).toEqual({
       label: "Alad Blue",
       hex: "#486a89",
     });
-    expect(resolvePetTrait("secondary", ALAD_BLUE, "de", translate)?.label).toBe("Alad-Blau");
   });
 
   it("names a fur pattern but leaves it without a swatch", () => {

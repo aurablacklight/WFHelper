@@ -11,9 +11,7 @@ import {
   getOverlayDescriptor,
 } from "../../config/shared/overlayLayout";
 import { createOverlayEditor } from "../../ipc/overlay/rewardEditor";
-import de from "../../src/i18n/de.json";
 import { en } from "../../src/i18n/en";
-import zh from "../../src/i18n/zh.json";
 
 function makeOwner() {
   const events = new EventEmitter();
@@ -389,8 +387,6 @@ describe("reward overlay edit sessions", () => {
 
   it("describes Ctrl+Z as undoing any editor change, not only a move", () => {
     expect(en["rewardEditor.arrangeHint"]).toContain("Ctrl+Z undoes the last change");
-    expect(de["rewardEditor.arrangeHint"]).toContain("Strg+Z macht die letzte Änderung rückgängig");
-    expect(zh["rewardEditor.arrangeHint"]).toContain("Ctrl+Z 撤销上一次更改");
   });
 
   it("rejects a preview variant that coerces to a supported string", () => {

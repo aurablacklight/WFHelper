@@ -150,7 +150,6 @@ export const OVERLAY_GET_PRICE = "overlay:get-price";
 export const OVERLAY_PUSH_RELIC_FILTERS = "overlay:push-relic-filters";
 export const OVERLAY_THEME_UPDATED = "overlay-theme-updated";
 export const OVERLAY_THEME_VARS = "overlay-theme-vars";
-export const OVERLAY_LOCALE_UPDATED = "overlay-locale-updated";
 export const OVERLAY_MESSAGES = "overlay-messages";
 export const OVERLAY_INTERACTION_MODE = "overlay-interaction-mode";
 export const OVERLAY_CONTENT_VISIBLE = "overlay-content-visible";

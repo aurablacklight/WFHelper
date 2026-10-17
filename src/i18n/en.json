@@ -1426,7 +1426,6 @@
   "settings.inventorySourceChangeFailed": "Could not change the inventory source.",
   "settings.exportInventory": "Export inventory",
   "settings.exportInventoryHint": "Saves your inventory as indented JSON that is easy to read.",
-  "settings.languageRow": "Display language",
   "settings.gameLanguageRow": "Item names",
   "settings.gameLanguageAuto": "Follow display language",
   "settings.linuxDisplayAuto": "Automatic",

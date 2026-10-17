@@ -36,14 +36,7 @@
     describeInventorySource,
     INVENTORY_SOURCE_OPTIONS,
   } from "../lib/inventorySourceLabel.js";
-  import {
-    tr,
-    locale,
-    setLocale,
-    LOCALE_OPTIONS,
-    type LocaleCode,
-    type MessageKey,
-  } from "../lib/i18n.js";
+  import { tr, type MessageKey } from "../lib/i18n.js";
   import {
     gameLanguage,
     setGameLanguage,
@@ -138,10 +131,6 @@
 
   let placementOpen = false;
   let customizationRevision = 0;
-  let languageChoice: LocaleCode;
-  $: languageChoice = $locale;
-  $: if (languageChoice !== $locale) setLocale(languageChoice);
-
   let gameLanguageChoice: GameLanguageChoice;
   $: gameLanguageChoice = $gameLanguage;
   $: if (gameLanguageChoice !== $gameLanguage) setGameLanguage(gameLanguageChoice);
@@ -721,13 +710,6 @@
         <div class="settings-masonry">
           <SettingsSection title={$tr("settings.languageTitle")}>
             <div class="mt-2.5 grid gap-1">
-              <SettingsRow label={$tr("settings.languageRow")} dataSetting="language">
-                <ThemedSelect bind:value={languageChoice}>
-                  {#each LOCALE_OPTIONS as option}
-                    <option value={option.code}>{option.label}</option>
-                  {/each}
-                </ThemedSelect>
-              </SettingsRow>
               <SettingsRow label={$tr("settings.gameLanguageRow")} dataSetting="game-language">
                 <ThemedSelect bind:value={gameLanguageChoice}>
                   <option value="auto">{$tr("settings.gameLanguageAuto")}</option>

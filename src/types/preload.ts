@@ -184,7 +184,6 @@ export interface PreloadAPI {
   toggleOverlay: () => void;
   simulateRelicTrigger: () => void;
   updateOverlayTheme: (themeVars: Record<string, string>) => void;
-  updateOverlayLocale: (locale: string) => void;
   updateGameLocale: (locale: string) => void;
   pushRelicFilters: (filters: RelicOverlayFilterPush) => void;
   getLinuxDisplay: () => Promise<IpcInvokeMap["getLinuxDisplay"]["return"]>;
