@@ -85,7 +85,8 @@ async function launch() {
 
 let app;
 try {
-  if (ps("Get-Process Warframe.x64 -ErrorAction SilentlyContinue")) {
+  // Get-Process exits non-zero when nothing matches, so count instead.
+  if (ps("@(Get-Process Warframe.x64 -ErrorAction SilentlyContinue).Count") !== "0") {
     throw new Error("Warframe is running; close it first.");
   }
   note(`launch target: ${launchTarget()}`);

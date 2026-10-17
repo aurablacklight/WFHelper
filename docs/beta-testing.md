@@ -138,3 +138,16 @@ an uninstalled copy turns its updater off and says so instead.
   Background checks now leave a downloading or downloaded update alone.
 - The first beta.5 build packaged stale German and Chinese catalogues left in
   `.electron-build`. The packager now clears that folder before building.
+
+### 2026-10-17: beta.5 to beta.6
+
+- `scripts/test-installed-update.mjs 0.1.0-beta.5 0.1.0-beta.6` passed. The
+  startup check opened the dialog with the beta.6 notes; the download stayed
+  ready to install; the installer relaunched the installed exe; the pin target
+  was unchanged; opening the pin started beta.6; the check reported Up To Date.
+- The packaged `win-unpacked` beta.6, started with a throwaway profile, logged
+  "Auto-updater disabled: ...win-unpacked\WFHelper Beta.exe is not an installed
+  copy", so a pin to a build folder can no longer loop.
+- The first run of the script stopped before touching the app: its Warframe
+  check treated `Get-Process`'s non-zero exit for "not running" as a failure.
+  It now counts matching processes instead.
