@@ -74,7 +74,6 @@ test.describe("Market tab (fixture mode)", () => {
     await expect(page.locator("#app")).toBeVisible({ timeout: 90_000 });
     await page.evaluate(() => {
       localStorage.setItem("setup-completed-v2", "1");
-      localStorage.setItem("app-language", "en");
     });
     await page.reload();
     try {

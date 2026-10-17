@@ -10,7 +10,6 @@ import {
   closeElectronTestHarness,
   evaluateInMain,
   launchElectronTestHarness,
-  setDisplayLanguage,
   setLayoutViewport,
   type ElectronTestHarness,
 } from "./electronTestHarness";
@@ -267,7 +266,6 @@ test.describe("Profit-Taker analytics", () => {
     await page.locator(`[data-pt-${direction === "prev" ? "next" : "prev"}]`).click();
     await expect(page.locator('[data-pt-stat-value="total"]')).toHaveText(cardText(METRICS.total));
     await expect(page.locator("[data-pt-notes]")).toHaveValue("Driver note for the recorded run");
-    await setDisplayLanguage(page, "de");
     await openPt(page);
     await page.locator(`[data-pt-run="${BASE.id}"]`).click();
     await setLayoutViewport(page, 1100, 800);
@@ -278,7 +276,7 @@ test.describe("Profit-Taker analytics", () => {
       /pt\.(phase|comparison|metric)\./,
     );
     await page.screenshot({
-      path: testInfo.outputPath("pt-detail-german-1100.png"),
+      path: testInfo.outputPath("pt-detail-1100.png"),
       fullPage: true,
     });
     expect(errors).toEqual([]);

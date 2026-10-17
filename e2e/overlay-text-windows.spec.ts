@@ -7,21 +7,18 @@ import {
   evaluateInMain,
   launchElectronTestHarness,
   overlayWindow,
-  setDisplayLanguage,
   type ElectronTestHarness,
 } from "./electronTestHarness";
 
-// overlay-lang.spec covers the reward overlay. These are the other three windows,
+// overlay-text.spec covers the reward overlay. These are the other three windows,
 // and they are driven through main directly because no game is running.
-test.describe("Riven, arbitration and trade windows follow the language", () => {
+test.describe("Riven, arbitration and trade windows show their English text", () => {
   test.setTimeout(240_000);
 
   let harness: ElectronTestHarness;
 
   test.beforeAll(async () => {
-    harness = await launchElectronTestHarness("wfh-overlay-windows-e2e-", {
-      storage: { "app-language": "de" },
-    });
+    harness = await launchElectronTestHarness("wfh-overlay-windows-e2e-");
   });
 
   test.afterAll(async () => {
@@ -45,40 +42,24 @@ test.describe("Riven, arbitration and trade windows follow the language", () => 
     );
   }
 
-  async function switchTo(code: "de" | "en"): Promise<void> {
-    await setDisplayLanguage(harness.page, code);
-  }
-
-  test("the riven overlay opens in German and follows a live switch", async () => {
+  test("the riven overlay opens with its English labels", async () => {
     await callMain("rivenOverlayIpc", "onRivenSessionOpen");
     const left = await overlayWindow(harness, "side=left");
     const right = await overlayWindow(harness, "side=right");
 
-    await expect(left.locator("#panel-label")).toHaveText("Aktuell", { timeout: 30_000 });
-    await expect(right.locator("#panel-label")).toHaveText("Neuer Wurf");
-    await expect(left.locator("#stats-container")).toHaveClass(/is-hidden/);
-    await expect(left.locator("#scanning-text")).toHaveText("Scanne aktuelle Werte...");
-    await expect(right.locator("#stats-list")).toHaveText("Warte auf Wurf...");
-    await expect(left.locator("#btn-rescan")).toHaveAttribute(
-      "title",
-      "Karte und verknüpfte Waffe neu scannen",
-    );
-    expect(await left.title()).toBe("Riven-Overlay");
-
-    await switchTo("en");
-
     await expect(left.locator("#panel-label")).toHaveText("Current", { timeout: 30_000 });
     await expect(right.locator("#panel-label")).toHaveText("New roll");
+    await expect(left.locator("#stats-container")).toHaveClass(/is-hidden/);
+    await expect(left.locator("#scanning-text")).toHaveText("Scanning current stats...");
+    await expect(right.locator("#stats-list")).toHaveText("Waiting for roll...");
     await expect(left.locator("#btn-rescan")).toHaveAttribute(
       "title",
       "Rescan card and linked weapon",
     );
     expect(await left.title()).toBe("Riven overlay");
-
-    await switchTo("de");
   });
 
-  test("the arbitration summary opens in German and follows a live switch", async () => {
+  test("the arbitration summary opens with English labels and numbers", async () => {
     await callMain("arbiOverlayIpc", "maybeShowArbiSummary", {
       id: "2026-08-20_12-00-00",
       startedAt: 1_760_000_000_000,
@@ -116,24 +97,11 @@ test.describe("Riven, arbitration and trade windows follow the language", () => 
     const arbi = await overlayWindow(harness, "arbi-overlay.html");
 
     await expect(arbi.locator('[data-i18n="overlay.arbi.complete"]')).toHaveText(
-      "Arbitration abgeschlossen",
+      "Arbitration Complete",
       { timeout: 30_000 },
     );
     await expect(arbi.locator('[data-i18n="overlay.arbi.expectedVitus"]')).toHaveText(
-      "Vitus erwartet",
-    );
-    await expect(arbi.locator('[data-i18n="overlay.arbi.saturation"]')).toHaveText(
-      "Zeit bei 15+ Gegnern",
-    );
-    await expect(arbi.locator("#kpi-vitus")).toHaveText("14,2");
-    await expect(arbi.locator("#kpi-uncertainty")).toHaveText("±3,1");
-    await expect(arbi.locator("#kpi-kills")).toHaveText("12.345");
-
-    await switchTo("en");
-
-    await expect(arbi.locator('[data-i18n="overlay.arbi.complete"]')).toHaveText(
-      "Arbitration Complete",
-      { timeout: 30_000 },
+      "Expected Vitus",
     );
     await expect(arbi.locator('[data-i18n="overlay.arbi.saturation"]')).toHaveText(
       "Time at 15+ Enemies",
@@ -141,11 +109,9 @@ test.describe("Riven, arbitration and trade windows follow the language", () => 
     await expect(arbi.locator("#kpi-vitus")).toHaveText("14.2");
     await expect(arbi.locator("#kpi-uncertainty")).toHaveText("±3.1");
     await expect(arbi.locator("#kpi-kills")).toHaveText("12,345");
-
-    await switchTo("de");
   });
 
-  test("the trade toast opens in German and follows a live switch", async () => {
+  test("the trade toast opens with its English labels", async () => {
     await callMain(
       "tradeNotificationIpc",
       "showTradeNotification",
@@ -165,13 +131,6 @@ test.describe("Riven, arbitration and trade windows follow the language", () => 
 
     const toast = await overlayWindow(harness, "trade-notification.html");
 
-    await expect(toast.locator("#trade-label")).toHaveText("Angebot geschlossen", {
-      timeout: 30_000,
-    });
-    await expect(toast.locator("#trade-badge")).toHaveText("Verkauf");
-    expect(await toast.title()).toBe("Handelsbenachrichtigung");
-
-    await switchTo("en");
     await expect(toast.locator("#trade-label")).toHaveText("Listing Closed", { timeout: 30_000 });
     await expect(toast.locator("#trade-badge")).toHaveText("Sale");
     expect(await toast.title()).toBe("Trade Notification");

@@ -56,7 +56,6 @@ describePt("Profit-Taker run analysis", () => {
     await page.evaluate(() => {
       localStorage.setItem("setup-completed-v2", "1");
       localStorage.setItem("feature-tour-done", "1");
-      localStorage.setItem("app-language", "en");
     });
     await page.reload();
     await expect(page.locator("#sidebar")).toBeVisible({ timeout: 20_000 });
