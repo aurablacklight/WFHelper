@@ -372,6 +372,19 @@ function loadPublicExportPlus(): number {
   }
 }
 
+// Items only @wfcd/items has (Corufell Prime, as of export-plus 0.6.12) keep its
+// archwing weapon categories, which the mastery list does not recognise. Give them
+// the export's category and product type so they count and display as Archwing.
+const WFCD_ARCHWING_PRODUCT: Record<string, string> = {
+  "Arch-Gun": "SpaceGuns",
+  "Arch-Melee": "SpaceMelee",
+};
+
+function withExportCategory(entry: ItemEntry): ItemEntry {
+  const product = WFCD_ARCHWING_PRODUCT[entry.category];
+  return product ? { ...entry, category: "Weapon", productCategory: product } : entry;
+}
+
 function loadWfcdItems(): number {
   try {
     const CATEGORIES = [
@@ -592,7 +605,7 @@ function loadWfcdItems(): number {
       }
 
       if (!itemsByUniqueName[item.uniqueName]) {
-        itemsByUniqueName[item.uniqueName] = wfcdEntry;
+        itemsByUniqueName[item.uniqueName] = withExportCategory(wfcdEntry);
         wfcdNewCount++;
       } else {
         const existing = itemsByUniqueName[item.uniqueName];
