@@ -16,7 +16,16 @@ if (process.platform !== "win32") throw new Error("This beta packager targets Wi
 const root = path.resolve(__dirname, "..");
 process.chdir(root);
 const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-const env = { ...process.env, npm_package_version: version };
+// The backend answers per-item price, meta and order-summary requests only with a
+// bootstrap token; without this flag those requests get 401 and fall back to slow
+// direct warframe.market calls or no price at all.
+const env = {
+  ...process.env,
+  VITE_WFM_BACKEND_BOOTSTRAP_ENABLED: process.env.VITE_WFM_BACKEND_BOOTSTRAP_ENABLED || "1",
+  npm_package_version: version,
+};
+if (env.VITE_WFM_BACKEND_BOOTSTRAP_ENABLED !== "1")
+  throw new Error("Beta builds need VITE_WFM_BACKEND_BOOTSTRAP_ENABLED=1.");
 function run(script, args = []) {
   execFileSync(process.execPath, [script, ...args], { stdio: "inherit", env });
 }
