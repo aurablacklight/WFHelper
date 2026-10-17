@@ -74,7 +74,8 @@ chunk-size and mixed-import warnings.
   the toggle off cannot recommend an arcane to a weapon without an unlocked slot.
 - Corrected stale English, German and Chinese caveats that claimed Rivens and
   capacity were not included, and removed the unsupported promise that approximate
-  firing rates cannot affect mod ranking. Native translation review remains open.
+  firing rates cannot affect mod ranking. The German and Chinese UI catalogues
+  were later removed; the fork's UI is English only.
 - Updated `damage-rules.md`, added the beta guide in `../features/builds.md`, and
   prepared [the in-game checks](validation.md). The diagnostic script now accepts
   wrapped inventories, fallback weapon names, target/stacks/capacity options and

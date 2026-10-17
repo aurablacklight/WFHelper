@@ -62,5 +62,4 @@ screenshotCaption: One line under the screenshot.
   heading that does not exist fails the build.
 - Each guide covers the purpose, prerequisites, the steps, how to read the
   output, limits, and where to get help.
-- The prose stays English. The app's translation dictionaries hold UI labels
-  only.
+- The prose stays English, like the app's UI.

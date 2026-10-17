@@ -6,7 +6,7 @@ order: 1
 version: "2.1.1"
 view: setup
 screenshot: docs-setup.png
-screenshotAlt: WFHelper setup with language, app size, and theme choices.
+screenshotAlt: WFHelper setup with app size and theme choices.
 screenshotCaption: The setup wizard. You can change these choices later in Settings.
 ---
 
@@ -15,7 +15,7 @@ screenshotCaption: The setup wizard. You can change these choices later in Setti
 1. Download WFHelper from [GitHub Releases](https://github.com/WFHelper/wfhelper/releases).
 2. On Windows, download the release's `WFHelper-<version>-Setup.exe` and run it. The installer is unsigned, so Windows SmartScreen may show a warning. Make sure the file came from the project's release page, then choose **More info** and **Run anyway**.
 3. On Linux, download the `.AppImage`, mark it executable in your file manager's Properties, and open it. See [Linux setup](#linux-setup) below for screen capture and Steam settings.
-4. Choose your language, app size, and theme in the setup wizard, then select **Next**.
+4. Choose your app size and theme in the setup wizard, then select **Next**.
 
 You do not need a WFHelper account. You only need a warframe.market sign-in for account features such as managing your listings.
 
@@ -50,7 +50,7 @@ The wizard shows previews of the relic reward, relic planner, riven, and arbitra
 
 To check a reward scan:
 
-1. Set **Warframe's UI language to English**. WFHelper's display language is a separate setting.
+1. Set **Warframe's UI language to English**.
 2. Leave WFHelper running, enter a Void Fissure mission, and open a relic.
 3. When the reward choices appear, wait for the reward overlay to show their prices.
 4. If it does not appear, check the overlay settings and the **Relic trigger hotkey** in **Settings > Overlays**. On Linux, also check the screen-share permission described below.

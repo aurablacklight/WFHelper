@@ -43,8 +43,7 @@ Notifications: in-game whispers, warframe.market DMs and arbitration windows can
 show desktop notifications while you play.
 
 > **Set Warframe's interface language to English.** Relic and riven scans only
-> read English item names. WFHelper's own display language is separate and can
-> be changed in Settings.
+> read English item names. This fork's own UI is English only.
 
 ## Install
 
