@@ -23,7 +23,6 @@ import {
   overlayWindow,
   releaseRange,
   restartElectronTestHarness,
-  setDisplayLanguage,
   type ElectronTestHarness,
 } from "./electronTestHarness";
 
@@ -680,7 +679,7 @@ test("rapid field selection and a refused drag preserve the last position on Sav
   }
 });
 
-test("saved reward fields survive a fresh process, live prices and language changes", async () => {
+test("saved reward fields survive a fresh process and live prices", async () => {
   test.setTimeout(120_000);
   let harness: ElectronTestHarness | undefined;
   const base = DEFAULT_REWARD_FIELD_STYLE;
@@ -739,11 +738,7 @@ test("saved reward fields survive a fresh process, live prices and language chan
     await expect(price).toHaveCSS("scale", "1.5");
     await expect(price).toHaveCSS("color", "rgb(51, 170, 255)");
     await expect(overlay.locator('[data-reward-field="rarity"]').first()).toBeHidden();
-    await setDisplayLanguage(harness.page, "de");
-    await expect(overlay.locator('[data-reward-field="slotLabel"]').first()).toHaveText("Platz 1");
-    await expect(price).toHaveCSS("scale", "1.5");
-    await expect(price).toHaveCSS("color", "rgb(51, 170, 255)");
-    await expect(overlay.locator('[data-reward-field="rarity"]').first()).toBeHidden();
+    await expect(overlay.locator('[data-reward-field="slotLabel"]').first()).toHaveText("Slot 1");
     await expect(overlay.locator(".reward-slot.has-item .slot-name")).toHaveText(
       Array(4).fill("Braton Prime Receiver"),
     );

@@ -21,8 +21,6 @@ interface ElectronTestHarnessOptions {
   inventory?: unknown;
   onPage?: (page: Page) => void | Promise<void>;
   lang?: string;
-  /** Leave app-language unset so detectLocale() falls through to the OS locale. */
-  skipLanguageSeed?: boolean;
   userDataFiles?: Record<string, unknown>;
   env?: Record<string, string>;
 }
@@ -132,7 +130,6 @@ async function startHarness(
         {
           "setup-completed-v2": "1",
           "feature-tour-done": "1",
-          ...(options.skipLanguageSeed ? {} : { "app-language": "en" }),
           ...options.storage,
         },
       );
@@ -315,12 +312,6 @@ export async function setFontScale(page: Page, scale: number | null): Promise<vo
 export async function openView(page: Page, view: string): Promise<void> {
   await page.locator(`#sidebar [data-view="${view}"]`).click();
   await page.waitForTimeout(300);
-}
-
-export async function setDisplayLanguage(page: Page, code: string): Promise<void> {
-  await page.locator('#sidebar [data-view="settings"]').click();
-  await page.locator('[data-tour-tab="general"]').click();
-  await page.locator('[data-setting="language"] select').selectOption(code);
 }
 
 export async function overlayWindow(

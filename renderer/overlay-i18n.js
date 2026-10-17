@@ -50,13 +50,13 @@
     return true;
   }
 
-  /** Re-runs cb on every language change so text built in JS follows along. */
+  /** Re-runs cb on every pushed bundle so text built in JS follows along. */
   function onApply(cb) {
     listeners.add(cb);
   }
 
   // Overlays wait on this before their first paint, so no panel ever flashes
-  // untranslated keys. It resolves true even when the pull fails or never
+  // raw message keys. It resolves true even when the pull fails or never
   // answers: the authored English markup beats a panel that never opens.
   function load(fetchMessages) {
     return new Promise(function (resolve) {
@@ -70,7 +70,7 @@
       Promise.resolve()
         .then(fetchMessages)
         .then(function (next) {
-          // A language change that landed while this was in flight is newer.
+          // A push that landed while this was in flight is newer.
           if (!pushed) applyMessages(next);
         })
         .catch(function () {})

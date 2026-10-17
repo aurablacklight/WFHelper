@@ -47,8 +47,6 @@ async function launchWizard(inventory: unknown | null): Promise<Wizard> {
   const app = await electron.launch({ args: ["--no-sandbox", "--lang=en-US", "."], env });
   const page = await mainWindow(app);
   await expect(page.locator("#app")).toBeVisible({ timeout: 90_000 });
-  await page.evaluate(() => localStorage.setItem("app-language", "en"));
-  await page.reload();
   await expect(page.locator("#content.setup-active")).toBeVisible({ timeout: 90_000 });
   if (inventory) {
     // The manual source is the only import path that needs no pinned binary.
@@ -88,11 +86,8 @@ test.describe.serial("First-run setup wizard", () => {
     await expect(page.locator("button[aria-pressed]").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Next", exact: true })).toBeVisible();
     await expect(page.locator("[data-setup-without-inventory]")).toBeVisible();
-    await page.locator("[data-setup-language] button").nth(1).click();
-    await expect.poll(() => page.evaluate(() => localStorage.getItem("app-language"))).toBe("de");
-    await page.locator("[data-setup-language] button").first().click();
     await page.screenshot({
-      path: test.info().outputPath("welcome-language.png"),
+      path: test.info().outputPath("welcome.png"),
       animations: "disabled",
     });
   });

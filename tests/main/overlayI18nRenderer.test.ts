@@ -51,34 +51,34 @@ describe("overlay renderer messages", () => {
     }
   });
 
-  it("does not let a slow pull overwrite a language change that already landed", async () => {
+  it("does not let a slow pull overwrite a push that already landed", async () => {
     const { api, node } = loadRendererHelper();
     let release: (value: unknown) => void = () => {};
     const slow = new Promise((resolve) => (release = resolve));
 
     const loaded = api.load(() => slow);
-    api.apply({ locale: "de", messages: { "test.label": "Deutsch", "test.title": "Titel" } });
-    expect(node.textContent).toBe("Deutsch");
+    api.apply({ locale: "en", messages: { "test.label": "Pushed", "test.title": "Pushed title" } });
+    expect(node.textContent).toBe("Pushed");
 
-    release({ locale: "en", messages: { "test.label": "English", "test.title": "Title" } });
+    release({ locale: "en", messages: { "test.label": "Pulled", "test.title": "Pulled title" } });
     await loaded;
-    expect(node.textContent).toBe("Deutsch");
+    expect(node.textContent).toBe("Pushed");
   });
 
-  it("applies a localized bundle and its locale", async () => {
+  it("applies a message bundle and its locale", async () => {
     const { api, document, node } = loadRendererHelper();
 
     await expect(
       api.load(() =>
         Promise.resolve({
-          locale: "de",
-          messages: { "test.label": "Deutsch", "test.title": "Deutscher Titel" },
+          locale: "en",
+          messages: { "test.label": "Loaded label", "test.title": "Loaded title" },
         }),
       ),
     ).resolves.toBe(true);
-    expect(node.textContent).toBe("Deutsch");
-    expect(node.title).toBe("Deutscher Titel");
-    expect(document.documentElement.lang).toBe("de");
-    expect(api.t("test.label")).toBe("Deutsch");
+    expect(node.textContent).toBe("Loaded label");
+    expect(node.title).toBe("Loaded title");
+    expect(document.documentElement.lang).toBe("en");
+    expect(api.t("test.label")).toBe("Loaded label");
   });
 });

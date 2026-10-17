@@ -64,7 +64,7 @@ vi.mock("../../ipc/ipcSecurity", () => ({
   },
   onAuthorized: vi.fn(),
 }));
-vi.mock("../../ipc/overlayI18n", () => ({ overlayMessages: vi.fn(), setOverlayLocale: vi.fn() }));
+vi.mock("../../ipc/overlayI18n", () => ({ overlayMessages: vi.fn() }));
 vi.mock("../../ipc/trayIpc", () => ({
   createTray: vi.fn(),
   destroyTray: vi.fn(),

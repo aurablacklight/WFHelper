@@ -1,12 +1,10 @@
-import de from "../src/i18n/de.json";
 import en from "../src/i18n/en.json";
-import zh from "../src/i18n/zh.json";
 
 type MessageKey = keyof typeof en;
-type Dictionary = Partial<Record<MessageKey, string>>;
 
 // The overlays are plain HTML windows with no access to the renderer's i18n
-// store, so main resolves their text and pushes the finished strings over IPC.
+// store, so main resolves their text and hands the finished strings over IPC.
+// The fork ships English only, so en.json is the single source.
 const OVERLAY_MESSAGE_KEYS = [
   "relics.quality.intact",
   "relics.quality.exceptional",
@@ -117,27 +115,11 @@ const OVERLAY_MESSAGE_KEYS = [
   "stats.filterTrade",
 ] as const satisfies readonly MessageKey[];
 
-// Same fallback chain as the renderer: a locale may be partial and every hole
-// is served by English.
-const DICTIONARIES: Record<string, Dictionary> = { en, de, zh };
-
-const DEFAULT_LOCALE = "en";
-let activeLocale = DEFAULT_LOCALE;
-
-/** Returns the newly active locale, or null when nothing changed. */
-export function setOverlayLocale(code: unknown): string | null {
-  const next = typeof code === "string" && DICTIONARIES[code] ? code : DEFAULT_LOCALE;
-  if (next === activeLocale) return null;
-  activeLocale = next;
-  return next;
-}
-
 /** A string main renders itself (the tray menu), not an overlay key. These are
  *  outside OVERLAY_MESSAGE_KEYS because no overlay window asks for them, and the
- *  fallback keeps the menu readable if a catalogue ever loses the key. */
+ *  fallback keeps the menu readable if the catalogue ever loses the key. */
 export function mainMessage(key: MessageKey, fallback: string): string {
-  const dictionary = DICTIONARIES[activeLocale] ?? DICTIONARIES[DEFAULT_LOCALE];
-  return dictionary[key] ?? DICTIONARIES[DEFAULT_LOCALE][key] ?? fallback;
+  return en[key] ?? fallback;
 }
 
 interface OverlayMessageBundle {
@@ -146,10 +128,7 @@ interface OverlayMessageBundle {
 }
 
 export function overlayMessages(): OverlayMessageBundle {
-  const dictionary = DICTIONARIES[activeLocale] ?? en;
   const messages: Record<string, string> = {};
-  for (const key of OVERLAY_MESSAGE_KEYS) {
-    messages[key] = dictionary[key] ?? en[key];
-  }
-  return { locale: activeLocale, messages };
+  for (const key of OVERLAY_MESSAGE_KEYS) messages[key] = en[key];
+  return { locale: "en", messages };
 }

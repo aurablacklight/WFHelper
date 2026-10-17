@@ -8,8 +8,8 @@ import {
   handleAuthorized,
   onAuthorized,
 } from "./ipcSecurity";
-import { overlayMessages, setOverlayLocale } from "./overlayI18n";
-import { createTray, destroyTray, isTrayActive } from "./trayIpc";
+import { overlayMessages } from "./overlayI18n";
+import { createTray, destroyTray } from "./trayIpc";
 import { disposeAppHotkeys, overlayHotkeyBackend } from "./hotkeyRegistry";
 import { createOverlaySettingsController } from "./overlay/settings";
 import { moveOverlayWindowBy } from "./overlay/windows";
@@ -55,8 +55,6 @@ import {
   OVERLAY_GET_DETECTED_UI_SCALE,
   OVERLAY_GET_MESSAGES,
   OVERLAY_GET_THEME_VARS,
-  OVERLAY_LOCALE_UPDATED,
-  OVERLAY_MESSAGES,
   OVERLAY_SET_SETTINGS,
   OVERLAY_THEME_UPDATED,
   OVERLAY_DRAG_MOVE,
@@ -254,10 +252,6 @@ function broadcastToOpenOverlays(channel: string, payload: unknown): void {
 function pushOverlayThemeVars(): void {
   if (!ctx.overlayThemeVars || Object.keys(ctx.overlayThemeVars).length === 0) return;
   broadcastToOpenOverlays(OVERLAY_THEME_VARS, { ...ctx.overlayThemeVars });
-}
-
-function pushOverlayMessages(): void {
-  broadcastToOpenOverlays(OVERLAY_MESSAGES, overlayMessages());
 }
 
 // Compared with what the windows were last sent, not with the settings before a
@@ -526,15 +520,6 @@ function register(): void {
     if (Object.keys(sanitized).length > 0) {
       pushOverlayThemeVars();
     }
-  });
-
-  onAuthorized(OVERLAY_LOCALE_UPDATED, assertMainRendererSender, (_event, rawLocale: unknown) => {
-    const locale = setOverlayLocale(rawLocale);
-    if (!locale) return;
-    log.info(`[OverlayI18n] locale=${locale}`);
-    pushOverlayMessages();
-    // The tray menu is built once and outlives the window, so it needs relabelling.
-    if (isTrayActive()) createTray();
   });
 
   handleAuthorized(OVERLAY_PLACEMENT_LAYOUT, assertMainRendererSender, async () => {

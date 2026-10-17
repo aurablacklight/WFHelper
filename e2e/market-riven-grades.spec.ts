@@ -133,7 +133,6 @@ test.describe("Market riven contract grades (fixture mode)", () => {
     await expect(page.locator("#app")).toBeVisible({ timeout: 90_000 });
     await page.evaluate(() => {
       localStorage.setItem("setup-completed-v2", "1");
-      localStorage.setItem("app-language", "en");
     });
     await page.reload();
     await expect(page.locator("#sidebar")).toBeVisible({ timeout: 90_000 });

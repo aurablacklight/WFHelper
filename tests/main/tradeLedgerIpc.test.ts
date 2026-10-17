@@ -276,15 +276,9 @@ describe("ledger IPC boundary", () => {
 
   it("takes the import dialog title from the message catalogue", async () => {
     await setup();
-    const { setOverlayLocale } = await import("../../ipc/overlayI18n");
-    const de = (await import("../../src/i18n/de.json")).default;
-    setOverlayLocale("de");
-    try {
-      await invoke("ledger:import-preview");
-      expect(openOptions?.title).toBe(de["analysis.importTitle"]);
-    } finally {
-      setOverlayLocale("en");
-    }
+    const en = (await import("../../src/i18n/en.json")).default;
+    await invoke("ledger:import-preview");
+    expect(openOptions?.title).toBe(en["analysis.importTitle"]);
   });
 
   it("writes CSV without partners when the option is off", async () => {

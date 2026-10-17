@@ -59,16 +59,13 @@ test("documentation links open the overview and the matching guides", async () =
     await overview.click();
     await page.screenshot({ path: test.info().outputPath("settings-docs.png") });
 
-    await page.evaluate(() => {
-      localStorage.removeItem("setup-completed-v2");
-      localStorage.setItem("app-language", "de");
-    });
+    await page.evaluate(() => localStorage.removeItem("setup-completed-v2"));
     await page.reload();
     const setupHelp = page.locator('[data-docs-link="setup"]');
-    await expect(setupHelp).toHaveAttribute("title", /^Hilfe zu /);
+    await expect(setupHelp).toHaveAttribute("title", "Setup help");
     await setupHelp.focus();
     await page.keyboard.press("Enter");
-    await page.screenshot({ path: test.info().outputPath("setup-help-de.png") });
+    await page.screenshot({ path: test.info().outputPath("setup-help.png") });
 
     const expected = [
       "https://wfhelper.com/docs/inventory",
@@ -86,10 +83,6 @@ test("documentation links open the overview and the matching guides", async () =
     for (const slug of ["inventory", "getting-started"]) {
       expect(fs.existsSync(path.resolve("docs/features", `${slug}.md`))).toBe(true);
     }
-    await page.evaluate(() => localStorage.setItem("app-language", "en"));
-    await page.reload();
-    await expect(page.locator('[data-docs-link="setup"]')).toHaveAttribute("title", "Setup help");
-    await page.screenshot({ path: test.info().outputPath("setup-help.png") });
   } finally {
     await closeElectronTestHarness(harness);
   }

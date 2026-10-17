@@ -100,7 +100,6 @@ describeArbi("Arbitration schedule + post-run overlay", () => {
     // Fresh sandbox starts on the setup view; flag it done and reload.
     await page.evaluate(() => {
       localStorage.setItem("setup-completed-v2", "1");
-      localStorage.setItem("app-language", "en");
     });
     await page.reload();
     await expect(page.locator("#sidebar")).toBeVisible({ timeout: 20_000 });
