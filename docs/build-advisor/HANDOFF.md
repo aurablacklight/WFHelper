@@ -392,7 +392,7 @@ backend/worker ci` once or the pre-push hook fails at the worker tests.
 
 ## Standing rules
 
-- Never push to or open a pull request against upstream unless asked.
+- Work only on the fork; never act on upstream. See `CLAUDE.md` at the repo root.
 - Do not bypass the pre-push hook without asking.
 - Launching the app with Warframe open reads the session token from game
   memory with no click. Digital Extremes does not sanction that; treat anything
