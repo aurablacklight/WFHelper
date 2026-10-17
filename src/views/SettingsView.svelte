@@ -712,7 +712,6 @@
             <div class="mt-2.5 grid gap-1">
               <SettingsRow label={$tr("settings.gameLanguageRow")} dataSetting="game-language">
                 <ThemedSelect bind:value={gameLanguageChoice}>
-                  <option value="auto">{$tr("settings.gameLanguageAuto")}</option>
                   {#each GAME_LANGUAGE_OPTIONS as option}
                     <option value={option.code}>{option.label}</option>
                   {/each}

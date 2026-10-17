@@ -1,5 +1,4 @@
-import { derived, writable, type Readable } from "svelte/store";
-import { locale } from "./i18n.js";
+import { writable, type Readable } from "svelte/store";
 import { send } from "./ipc.js";
 import { GAME_LOCALE_UPDATED } from "../../config/shared/ipcChannels.js";
 
@@ -23,8 +22,7 @@ type GameLanguageCode =
   | "uk"
   | "zh";
 
-/** "auto" tracks the display language and falls back to English when unbundled. */
-export type GameLanguageChoice = "auto" | GameLanguageCode;
+export type GameLanguageChoice = GameLanguageCode;
 
 export const GAME_LANGUAGE_OPTIONS: ReadonlyArray<{ code: GameLanguageCode; label: string }> = [
   { code: "en", label: "English" },
@@ -53,25 +51,18 @@ function isGameLanguageCode(value: string | null): value is GameLanguageCode {
 function readStoredChoice(): GameLanguageChoice {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "auto" || isGameLanguageCode(stored)) return stored;
+    // Older builds stored "auto", which followed the removed display language.
+    if (isGameLanguageCode(stored)) return stored;
   } catch {
     // no localStorage (tests, hardened webview)
   }
-  return "auto";
+  return "en";
 }
 
 const choiceStore = writable<GameLanguageChoice>(readStoredChoice());
 
 /** Read-only so setGameLanguage stays the only writer that persists. */
 export const gameLanguage: Readable<GameLanguageChoice> = { subscribe: choiceStore.subscribe };
-
-const effectiveGameLanguage: Readable<GameLanguageCode> = derived(
-  [choiceStore, locale],
-  ([$choice, $locale]) => {
-    if ($choice !== "auto") return $choice;
-    return isGameLanguageCode($locale) ? $locale : "en";
-  },
-);
 
 export function setGameLanguage(choice: GameLanguageChoice): void {
   choiceStore.set(choice);
@@ -84,7 +75,7 @@ export function setGameLanguage(choice: GameLanguageChoice): void {
 
 // Main owns the name tables, so it only ever needs the resolved code. It replies
 // with item-db-updated, which is what actually repaints the names.
-effectiveGameLanguage.subscribe((code) => {
+choiceStore.subscribe((code) => {
   if (typeof window === "undefined") return;
   if (typeof window.api?.updateGameLocale !== "function") return;
   send(GAME_LOCALE_UPDATED, code);
