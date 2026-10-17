@@ -125,6 +125,31 @@ function applyFakeUpdateState(): boolean {
   return true;
 }
 
+// A fetched update is held from download until the restart; background checks
+// must not knock it back to "available" and hide Restart & install.
+const HELD_UPDATE_STATUSES = new Set(["downloading", "downloaded", "installing"]);
+
+function holdsUpdate(version?: string | null): boolean {
+  return (
+    HELD_UPDATE_STATUSES.has(updateState.status) && (!version || version === updateState.version)
+  );
+}
+
+// NSIS writes its uninstaller beside the installed exe. A copy run from anywhere
+// else (a packager's win-unpacked output, or a shortcut pinned to it) would install
+// the update into the real install folder and relaunch itself still on the old
+// version, offering the same update forever.
+function isInstalledCopy(): boolean {
+  if (process.platform !== "win32") return true;
+  try {
+    return fs
+      .readdirSync(path.dirname(process.execPath))
+      .some((name) => /^Uninstall .+.exe$/i.test(name));
+  } catch {
+    return true;
+  }
+}
+
 function shouldEnableAutoUpdater(): boolean {
   if (process.env.WF_DISABLE_AUTO_UPDATE === "1") return false;
   if (!app.isPackaged) return false;
@@ -232,6 +257,14 @@ export function initialize(windowRef: import("electron").BrowserWindow): void {
     return;
   }
 
+  if (!isInstalledCopy()) {
+    disabledReason =
+      "Updates only work in the installed app. Open it from the Start menu, or re-pin it to the taskbar from there.";
+    setUpdateState("disabled", { message: disabledReason });
+    log.warn(`Auto-updater disabled: ${process.execPath} is not an installed copy`);
+    return;
+  }
+
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = FRIENDS_BETA;
@@ -239,11 +272,13 @@ export function initialize(windowRef: import("electron").BrowserWindow): void {
 
   autoUpdater.on("checking-for-update", () => {
     log.info("Checking for updates");
+    if (holdsUpdate()) return;
     setUpdateState("checking", { message: "Checking for updates..." });
   });
 
   autoUpdater.on("update-available", (info: UpdateInfo) => {
     log.info("Update available:", info?.version);
+    if (holdsUpdate(info?.version)) return;
     setUpdateState("available", {
       ...toInfoPatch(info),
       message: `Update ${info?.version || ""} available. Download when ready.`.trim(),
@@ -297,8 +332,6 @@ function scheduleAutoChecks(): void {
   startupCheckTimer.unref?.();
 
   periodicCheckTimer = setInterval(() => {
-    // Don't interrupt an in-flight download or a ready-to-install update.
-    if (updateState.status === "downloading" || updateState.status === "downloaded") return;
     void checkForUpdates("periodic");
   }, PERIODIC_UPDATE_CHECK_INTERVAL_MS);
   periodicCheckTimer.unref?.();
@@ -320,6 +353,10 @@ export async function checkForUpdates(
       message: disabledReason || "Auto-updater disabled.",
       state: updateState,
     };
+  }
+  // Automatic checks never interrupt an in-flight download or a ready-to-install update.
+  if (source !== "manual" && HELD_UPDATE_STATUSES.has(updateState.status)) {
+    return { ok: true, source, state: updateState };
   }
   if (checkPromise) {
     return checkPromise;
