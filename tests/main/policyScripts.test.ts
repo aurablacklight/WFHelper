@@ -10,8 +10,14 @@ const EMPTY_GIT_CONFIG = path.join(os.tmpdir(), "wfh-policy-empty.gitconfig");
 const EMPTY_XDG_CONFIG = path.join(os.tmpdir(), "wfh-policy-xdg");
 fs.writeFileSync(EMPTY_GIT_CONFIG, "");
 fs.mkdirSync(EMPTY_XDG_CONFIG, { recursive: true });
+// Git hooks export GIT_DIR, GIT_INDEX_FILE and friends. Inherited, they point
+// every temp-repo command at the real repository, so a hook-run suite would
+// rewrite its config and refs.
+const INHERITED_ENV = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith("GIT_")),
+);
 const CLEAN_GIT_ENV = {
-  ...process.env,
+  ...INHERITED_ENV,
   GIT_CONFIG_GLOBAL: EMPTY_GIT_CONFIG,
   GIT_CONFIG_NOSYSTEM: "1",
   XDG_CONFIG_HOME: EMPTY_XDG_CONFIG,
