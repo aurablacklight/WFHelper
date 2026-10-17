@@ -20,7 +20,6 @@
   import SettingsRow from "../components/settings/SettingsRow.svelte";
   import OverlayOpacityControl from "../components/settings/OverlayOpacityControl.svelte";
   import AboutCard from "../components/settings/AboutCard.svelte";
-  import SupportersCard from "../components/settings/SupportersCard.svelte";
   import FissureAlerts from "../components/settings/FissureAlerts.svelte";
   import ProtonLaunchOption from "../components/ProtonLaunchOption.svelte";
   import LinuxDisplayBackend from "../components/LinuxDisplayBackend.svelte";
@@ -1465,7 +1464,6 @@
       {:else}
         <div class="settings-grid">
           <AboutCard />
-          <SupportersCard />
         </div>
       {/if}
     </div>
