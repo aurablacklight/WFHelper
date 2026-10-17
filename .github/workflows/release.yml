@@ -119,7 +119,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $env:GITHUB_REF_NAME already exists"
           } else {
-            # Draft: paste the changelog, then Publish (which fires announce-release.yml).
+            # Draft: paste the changelog, then Publish.
             gh release create "$env:GITHUB_REF_NAME" `
               --repo "$env:GITHUB_REPOSITORY" `
               --title "$env:GITHUB_REF_NAME" `
