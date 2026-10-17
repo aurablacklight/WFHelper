@@ -1,9 +1,9 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { APP_PRODUCT_NAME } from "../shared/appMeta";
+import { DISTRIBUTION_NAME, FRIENDS_BETA } from "./distribution";
 
-const APP_USER_DATA_DIR_NAME = APP_PRODUCT_NAME;
+const APP_USER_DATA_DIR_NAME = DISTRIBUTION_NAME;
 const LEGACY_USER_DATA_DIR_NAMES = ["warframe-companion"];
 
 function directoryHasEntries(dir: string): boolean {
@@ -38,13 +38,13 @@ function copyLegacyUserData(appDataRoot: string, targetDir: string): void {
 const appDataRoot = app.getPath("appData");
 const userDataPath = path.join(appDataRoot, APP_USER_DATA_DIR_NAME);
 
-app.setName(APP_PRODUCT_NAME);
+app.setName(DISTRIBUTION_NAME);
 
 // E2E isolates disk state because overriding APPDATA does not move Electron userData.
 const userDataOverride = process.env.WFHELPER_USER_DATA;
 if (userDataOverride) {
   app.setPath("userData", userDataOverride);
 } else {
-  copyLegacyUserData(appDataRoot, userDataPath);
+  if (!FRIENDS_BETA) copyLegacyUserData(appDataRoot, userDataPath);
   app.setPath("userData", userDataPath);
 }

@@ -20,6 +20,9 @@ In the app:
 - Foundry: crafting requirements down to every component
 - Mastery: what you have not mastered yet, and what you could build
 - Rivens: your rivens compared with the market, plus a riven finder
+- Builds (beta): suggests primary and secondary weapon builds from your owned
+  mods and damage arcanes, with saved-config comparisons and estimated target
+  damage. Validate recommendations in-game; some mechanics are not modelled
 - Market: manage your warframe.market orders in the app (sign-in optional)
 - Arbitrations: each run analyzed from EE.log (kills, drones, rotations and
   vitus luck against the expected drop rates), plus the schedule with desktop

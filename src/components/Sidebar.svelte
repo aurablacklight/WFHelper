@@ -23,11 +23,9 @@
   import { resetTourAutoStart } from "../stores/tour.js";
   import type { MessageKey } from "../lib/i18n.js";
   import { VIEW_LABEL_KEYS, type SidebarViewName } from "../lib/viewRegistry.js";
-  import CommunityLinks from "./CommunityLinks.svelte";
-  import FeedbackModal from "./FeedbackModal.svelte";
+  import { FEEDBACK_URL } from "../config/links.js";
 
   $: showDevTools = $devMode;
-  let feedbackOpen = false;
 
   interface NavItem {
     view: SidebarViewName;
@@ -298,7 +296,7 @@
       class="nav-btn relative flex w-full cursor-pointer items-center gap-3 rounded-md border-0 bg-transparent px-3.5 py-2.5 font-display text-base font-medium tracking-wide text-text-muted transition-colors duration-150 hover:bg-bg-hover hover:text-text-primary"
       title={$tr("feedback.title")}
       aria-label={$tr("feedback.title")}
-      on:click={() => (feedbackOpen = true)}
+      on:click={() => send("open-external", FEEDBACK_URL)}
     >
       <svg
         viewBox="0 0 24 24"
@@ -315,13 +313,8 @@
       </svg>
       <span>{$tr("feedback.title")}</span>
     </button>
-    <CommunityLinks {collapsed} />
   </div>
 </nav>
-
-{#if feedbackOpen}
-  <FeedbackModal onClose={() => (feedbackOpen = false)} />
-{/if}
 
 <div
   data-sidebar-grip

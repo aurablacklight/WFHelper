@@ -1,0 +1,159 @@
+import { describe, expect, it } from "vitest";
+import { targetDps } from "../../services/buildAdvisor/statusModel";
+import { findBestGunBuild, type BuildCandidate } from "../../services/buildAdvisor/gunBuildSearch";
+import type { GunBaseStats, GunStats, ModEffect } from "../../config/shared/buildAdvisorTypes";
+
+const gun: GunBaseStats = {
+  damage: { impact: 100 },
+  multishot: 1,
+  criticalChance: 0.1,
+  criticalMultiplier: 2,
+  statusChance: 0.1,
+  fireRate: 1,
+  magazineSize: 10,
+  reloadTime: 2,
+};
+
+const mod = (id: string, effects: ModEffect[], family = id): BuildCandidate => ({
+  id,
+  family,
+  effects,
+});
+const ids = (mods: readonly BuildCandidate[]) => mods.map((m) => m.id).sort();
+
+describe("findBestGunBuild", () => {
+  it("selects Hunter Munitions for armoured targets but not raw Arsenal DPS", () => {
+    const base = { ...gun, criticalChance: 1, criticalMultiplier: 3, statusChance: 0 };
+    const candidates = [
+      mod("hunter", [{ stat: "slashOnCritical", value: 0.3 }]),
+      mod("damage", [{ stat: "damage", value: 1 }]),
+    ];
+    const raw = findBestGunBuild(base, candidates, 1);
+    const armoured = findBestGunBuild(
+      base,
+      candidates,
+      1,
+      [],
+      (s) => targetDps(s, "grineer").burstDps,
+    );
+    expect(ids(raw.mods)).toEqual(["damage"]);
+    expect(ids(armoured.mods)).toEqual(["hunter"]);
+    expect(armoured.stats.slashOnCritical).toBe(0.3);
+  });
+
+  it("prefers bonuses that multiply over a second bonus of the same kind", () => {
+    const build = findBestGunBuild(
+      gun,
+      [
+        mod("damageA", [{ stat: "damage", value: 1.65 }]),
+        mod("damageB", [{ stat: "damage", value: 1 }]),
+        mod("multishot", [{ stat: "multishot", value: 0.9 }]),
+      ],
+      2,
+    );
+    // 2.65 * 1.9 beats 3.65 from stacking both damage mods.
+    expect(ids(build.mods)).toEqual(["damageA", "multishot"]);
+    // 100 * 2.65 damage * 1.9 pellets * 1.1 average crit.
+    expect(build.stats.burstDps).toBeCloseTo(553.85, 6);
+  });
+
+  it("never equips two mods of one family", () => {
+    const build = findBestGunBuild(
+      gun,
+      [
+        mod("serration", [{ stat: "damage", value: 1.65 }], "baseDamage"),
+        mod("flawedSerration", [{ stat: "damage", value: 0.4 }], "baseDamage"),
+      ],
+      2,
+    );
+    expect(ids(build.mods)).toEqual(["serration"]);
+  });
+
+  it("leaves a slot empty rather than fill it with a mod that adds no damage", () => {
+    const build = findBestGunBuild(
+      gun,
+      [
+        mod("damage", [{ stat: "damage", value: 1.65 }]),
+        mod("slowDown", [{ stat: "fireRate", value: -0.2 }]),
+      ],
+      2,
+    );
+    expect(ids(build.mods)).toEqual(["damage"]);
+  });
+
+  it("values a mod against bonuses that are always on, such as an arcane", () => {
+    const candidates = [
+      mod("damage", [{ stat: "damage", value: 1.65 }]),
+      mod("multishot", [{ stat: "multishot", value: 0.9 }]),
+    ];
+    // Alone, +165% damage (2.65x) beats +90% multishot (1.9x).
+    expect(ids(findBestGunBuild(gun, candidates, 1).mods)).toEqual(["damage"]);
+
+    // Beside +360% damage the same mod adds 6.25 / 4.6 = 1.36x, so multishot wins.
+    const build = findBestGunBuild(gun, candidates, 1, [[{ stat: "damage", value: 3.6 }]]);
+    expect(ids(build.mods)).toEqual(["multishot"]);
+    // 100 * 4.6 damage * 1.9 pellets * 1.1 average crit.
+    expect(build.stats.burstDps).toBeCloseTo(961.4, 6);
+  });
+
+  it("orders elemental mods so the pair the score rewards is the one that combines", () => {
+    const element = (damageType: "heat" | "cold" | "toxin"): ModEffect[] => [
+      { stat: "typedDamage", damageType, value: 1 },
+    ];
+    const candidates = [
+      mod("heat", element("heat")),
+      mod("cold", element("cold")),
+      mod("toxin", element("toxin")),
+    ];
+    // Viral is worth half again; every other type is worth its face value.
+    const score = (stats: GunStats): number => stats.totalDamage + 0.5 * (stats.damage.viral ?? 0);
+
+    const build = findBestGunBuild(gun, candidates, 3, [], score);
+
+    // Cold and toxin must sit next to each other, with heat left over.
+    expect(build.stats.damage.viral).toBeCloseTo(200, 6);
+    expect(build.stats.damage.heat).toBeCloseTo(100, 6);
+    expect(build.stats.damage.blast).toBeUndefined();
+    expect(build.stats.damage.gas).toBeUndefined();
+    // The returned order is the one that produces those stats.
+    expect(build.mods.map((m) => m.id).indexOf("heat")).toBe(2);
+  });
+
+  it("trades two picks for a pair of elements when one alone would make things worse", () => {
+    const element = (damageType: "heat" | "cold" | "toxin", value: number): ModEffect[] => [
+      { stat: "typedDamage", damageType, value },
+    ];
+    const candidates = [
+      mod("heatA", element("heat", 1)),
+      mod("heatB", element("heat", 0.9)),
+      mod("cold", element("cold", 0.6)),
+      mod("toxin", element("toxin", 0.6)),
+    ];
+    // Viral triples the build; blast and gas are worth nothing extra. Two slots
+    // fill with heat first, and swapping in cold or toxin alone only makes blast
+    // or gas, so the pair has to come in together.
+    const score = (stats: GunStats): number =>
+      stats.totalDamage * ((stats.damage.viral ?? 0) > 0 ? 3 : 1);
+
+    const build = findBestGunBuild(gun, candidates, 2, [], score);
+
+    expect(ids(build.mods)).toEqual(["cold", "toxin"]);
+    expect(build.stats.damage.viral).toBeCloseTo(120, 6);
+  });
+
+  it("swaps out an early pick when a pair of later ones is stronger together", () => {
+    const build = findBestGunBuild(
+      gun,
+      [
+        mod("damage", [{ stat: "damage", value: 1 }]),
+        mod("critChance", [{ stat: "criticalChance", value: 9 }]),
+        mod("critDamage", [{ stat: "criticalDamage", value: 4 }]),
+      ],
+      2,
+    );
+    // Damage alone doubles output and is the best first pick, but 100% crit
+    // chance at 10x is 1000 against 400 for damage with crit chance.
+    expect(ids(build.mods)).toEqual(["critChance", "critDamage"]);
+    expect(build.stats.burstDps).toBeCloseTo(1000, 6);
+  });
+});

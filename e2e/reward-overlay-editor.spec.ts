@@ -180,6 +180,12 @@ test("reward layout editing saves from Settings and opens from setup", async () 
     await overlay.locator('[data-reward-field="platinumValue"]').first().click();
     await page.locator("[data-reward-editor-elements] summary").click();
     await page.locator('[data-reward-editor-field="rarity"]').click();
+    // Selection crosses renderers; uncheck is a no-op while the old field is shown.
+    await expect(page.locator('[data-reward-editor-field="rarity"]')).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.locator("[data-reward-editor-hidden]")).toBeChecked();
     await page.locator("[data-reward-editor-hidden]").uncheck();
     await expect(overlay.locator('[data-reward-field="rarity"]').first()).toBeVisible();
     await page.locator("[data-reward-editor-hidden]").check();

@@ -110,6 +110,7 @@ import * as snapshotCacheIpc from "./ipc/snapshotCacheIpc";
 import * as rankedHotsetIpc from "./ipc/rankedHotsetIpc";
 import * as statsIpc from "./ipc/statsIpc";
 import * as rivensIpc from "./ipc/rivensIpc";
+import * as buildAdvisorIpc from "./ipc/buildAdvisorIpc";
 import * as tradeNotificationIpc from "./ipc/tradeNotificationIpc";
 import * as notificationLogIpc from "./ipc/notificationLogIpc";
 import * as notificationChannelsIpc from "./ipc/notificationChannelsIpc";
@@ -148,7 +149,7 @@ import * as apiHelperRunner from "./services/apiHelperRunner";
 import * as inventorySync from "./services/inventorySync";
 import { disposeLinuxStreamCapture } from "./services/linuxStreamCapture";
 import { loadMainWindowState, saveMainWindowState } from "./services/mainWindowState";
-import { WIN_APP_USER_MODEL_ID } from "./config/shared/appMeta";
+import { DISTRIBUTION_APP_ID } from "./config/runtime/distribution";
 import {
   applyInjectionGuardForStartup,
   describeKnownInjectors,
@@ -190,7 +191,7 @@ if (!GPU_ACCELERATION_ENABLED) app.disableHardwareAcceleration();
 
 // Windows uses the AUMID for notification settings and Focus Assist.
 if (process.platform === "win32") {
-  app.setAppUserModelId(WIN_APP_USER_MODEL_ID);
+  app.setAppUserModelId(DISTRIBUTION_APP_ID);
 }
 
 process.on("uncaughtException", (err: Error) => {
@@ -533,6 +534,7 @@ function registerIpcHandlers(profileStage: ProfileStage): void {
   rankedHotsetIpc.register();
   statsIpc.register();
   rivensIpc.register();
+  buildAdvisorIpc.register();
   tradeNotificationIpc.register();
   arbiIpc.register();
   profitTakerIpc.register();

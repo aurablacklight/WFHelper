@@ -1,0 +1,242 @@
+import { test, expect, type Page } from "@playwright/test";
+
+import {
+  closeElectronTestHarness,
+  launchElectronTestHarness,
+  openView,
+  writeHarnessInventory,
+  type ElectronTestHarness,
+} from "./electronTestHarness";
+
+const LEX_PRIME = "/Lotus/Weapons/Tenno/Pistols/PrimeLex/PrimeLex";
+const TRUMNA_PRIME = "/Lotus/Weapons/Tenno/LongGuns/PrimeTrumna/PrimeTrumnaWeapon";
+// Not in the bundled weapon table, so the advisor has to refuse it.
+const UNKNOWN_BOW = "/Lotus/Weapons/Tenno/Bows/FixtureBow/FixtureBow";
+const HORNET_STRIKE = "/Lotus/Upgrades/Mods/Pistol/WeaponDamageAmountMod";
+const BARREL_DIFFUSION = "/Lotus/Upgrades/Mods/Pistol/WeaponFireIterationsMod";
+// +110% multishot, plus 4 x +30% on kill.
+const GALVANIZED_DIFFUSION = "/Lotus/Upgrades/Mods/Pistol/WeaponFireIterationsSPMod";
+
+// 12 x +30% damage on kill at rank 5, plus +30% reload speed.
+const SECONDARY_MERCILESS = "/Lotus/Upgrades/CosmeticEnhancers/Offensive/SecondaryDamageOnKill";
+
+const id = (n: number) => ({ $oid: n.toString(16).padStart(24, "0") });
+
+test.describe("Build advisor", () => {
+  test.setTimeout(180_000);
+
+  let harness: ElectronTestHarness;
+  let page: Page;
+
+  test.beforeAll(async () => {
+    harness = await launchElectronTestHarness("wfh-builds-e2e-");
+    page = harness.page;
+    writeHarnessInventory(harness, {
+      PlayerLevel: 20,
+      Suits: [],
+      LongGuns: [
+        { ItemId: id(100), ItemType: TRUMNA_PRIME },
+        { ItemId: id(101), ItemType: UNKNOWN_BOW },
+      ],
+      // Config A holds the rank 10 Hornet Strike alone.
+      Pistols: [
+        {
+          ItemId: id(102),
+          ItemType: LEX_PRIME,
+          // Rank 30 with a catalyst and an arcane adapter: 60 capacity.
+          XP: 450_000,
+          Features: 33,
+          // This may replace the innate attack polarity; do not count both.
+          Polarity: [{ Slot: 0, Value: "AP_ATTACK" }],
+          Configs: [{ Upgrades: [id(1).$oid] }, {}, {}],
+        },
+      ],
+      Upgrades: [
+        { ItemId: id(1), ItemType: HORNET_STRIKE, UpgradeFingerprint: '{"lvl":10}' },
+        { ItemId: id(2), ItemType: BARREL_DIFFUSION, UpgradeFingerprint: '{"lvl":5}' },
+        { ItemId: id(3), ItemType: GALVANIZED_DIFFUSION, UpgradeFingerprint: '{"lvl":10}' },
+        { ItemId: id(4), ItemType: SECONDARY_MERCILESS, UpgradeFingerprint: '{"lvl":5}' },
+      ],
+      RawUpgrades: [],
+    });
+  });
+
+  test.afterAll(async () => {
+    await closeElectronTestHarness(harness);
+  });
+
+  const stat = (key: string) => page.locator(`[data-builds-stat="${key}"] td`);
+
+  test("Builds font size defaults to 16 px and persists settings choices", async () => {
+    const openSettings = async () => {
+      await openView(page, "settings");
+      await page.locator('[data-tour-tab="appearance"]').click();
+      await page.locator('[data-appearance-tab="theme"]').click();
+    };
+    const checkSize = async (size: number) => {
+      await openView(page, "builds");
+      const gun = page.locator(`[data-builds-gun="${LEX_PRIME}"]`);
+      await gun.click();
+      await expect(gun).toHaveCSS("font-size", `${size}px`);
+      await expect(stat("total").first()).toHaveCSS("font-size", `${size}px`);
+      await expect(page.locator("[data-builds-assumed]").first()).toHaveCSS(
+        "font-size",
+        `${size}px`,
+      );
+      await expect(page.locator("[data-builds-mod-wiki] button").first()).toHaveCSS(
+        "font-size",
+        `${size}px`,
+      );
+    };
+
+    await checkSize(16);
+    for (const size of [14, 18, 20]) {
+      await openSettings();
+      await page
+        .getByRole("combobox", { name: "Builds font size", exact: true })
+        .selectOption(String(size));
+      await checkSize(size);
+    }
+    await page.reload();
+    await checkSize(20);
+    await openSettings();
+    await expect(page.locator("[data-builds-font-size]")).toHaveValue("20");
+    await checkSize(20);
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.screenshot({ path: test.info().outputPath("builds-font-20-wide.png") });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect
+      .poll(() =>
+        page
+          .locator("[data-builds-view]")
+          .evaluate((element) => element.scrollWidth <= element.clientWidth),
+      )
+      .toBe(true);
+    await page.screenshot({ path: test.info().outputPath("builds-font-20.png") });
+    await page.locator("[data-builds-stats]").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("builds-font-20-stats.png") });
+    await openSettings();
+    await page.locator("[data-builds-font-size]").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath("builds-font-setting.png") });
+    await page.locator("[data-builds-font-size]").selectOption("16");
+    await checkSize(16);
+  });
+
+  test.beforeEach(async () => {
+    await openView(page, "builds");
+    await expect(page.locator("[data-builds-view]")).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("the sidebar opens the tab and lists every owned gun", async () => {
+    await expect(page.locator("[data-builds-gun]")).toHaveCount(3);
+    await expect(page.locator(`[data-builds-gun="${LEX_PRIME}"]`)).toContainText("Lex Prime");
+  });
+
+  test("picking a gun shows the recommended mods beside the saved config", async () => {
+    await page.locator(`[data-builds-gun="${LEX_PRIME}"]`).click();
+
+    // Stacks are assumed up, so the galvanized multishot mod wins its family.
+    await expect(page.locator("[data-builds-mod]")).toHaveCount(3);
+    await expect(page.locator(`[data-builds-mod="${HORNET_STRIKE}"]`)).toBeVisible();
+    await expect(page.locator(`[data-builds-mod="${GALVANIZED_DIFFUSION}"]`)).toBeVisible();
+    // The owned arcane leads the list, with its stacks assumed too.
+    await expect(page.locator("[data-builds-arcane]")).toHaveCount(1);
+    await expect(page.locator(`[data-builds-mod="${SECONDARY_MERCILESS}"]`)).toBeVisible();
+    await expect(page.locator("[data-builds-assumed]")).toHaveCount(2);
+    const hornet = page.locator(`[data-builds-mod="${HORNET_STRIKE}"]`);
+    await expect(hornet.getByAltText("Polarity: Madurai", { exact: true })).toBeVisible();
+    const previewTrigger = hornet.locator("[data-builds-preview-trigger]");
+    const preview = hornet.locator("[data-builds-preview]");
+    await previewTrigger.hover();
+    await expect(preview).toBeVisible();
+    await expect(preview).toContainText("Hornet Strike");
+    await page.screenshot({ path: test.info().outputPath("builds-mod-preview.png") });
+    await page.locator("[data-builds-stats]").hover();
+    await expect(preview).toBeHidden();
+    await previewTrigger.focus();
+    await expect(preview).toBeVisible();
+    await previewTrigger.press("Escape");
+    await expect(preview).toBeHidden();
+    // Hornet Strike (14) halves on Lex Prime's built-in attack polarity; the
+    // galvanized mod costs 14.
+    await expect(page.locator("[data-builds-capacity]")).toContainText("21/60");
+    await expect(page.locator("[data-builds-capacity]")).toContainText("at most");
+    await expect(page.locator("[data-builds-capacity-note]")).toContainText(
+      "original polarity positions are unknown",
+    );
+
+    // Puncture 144 with +220% and the arcane's +360% (6.8x); config A has +220% only.
+    await expect(stat("puncture")).toHaveText(["Puncture", "979.2", "460.8"]);
+    // +110% and 4 x +30% in the recommendation; config A has no multishot mod.
+    await expect(stat("multishot")).toHaveText(["Multishot", "3.3", "1.0"]);
+    // 180 * 6.8 a projectile times 3.3, against 576 times 1.
+    await expect(stat("total")).toHaveText(["Total", "4,039.2", "576.0"]);
+
+    await page.screenshot({ path: test.info().outputPath("builds-lex-prime.png") });
+  });
+
+  test("turning stacks off ranks on arsenal numbers", async () => {
+    await page.locator(`[data-builds-gun="${LEX_PRIME}"]`).click();
+    await expect(page.locator(`[data-builds-mod="${GALVANIZED_DIFFUSION}"]`)).toBeVisible();
+
+    await page.locator("[data-builds-stacks]").click();
+
+    // Without its stacks the galvanized mod is +110%, so the plain +120% wins.
+    await expect(page.locator(`[data-builds-mod="${BARREL_DIFFUSION}"]`)).toBeVisible();
+    await expect(page.locator("[data-builds-assumed]")).toHaveCount(0);
+    // The arcane's damage needs stacks, so it drops out as well.
+    await expect(page.locator("[data-builds-arcane]")).toHaveCount(0);
+    await expect(stat("multishot")).toHaveText(["Multishot", "2.2", "1.0"]);
+    await expect(stat("total")).toHaveText(["Total", "1,267.2", "576.0"]);
+
+    await page.locator("[data-builds-stacks]").click();
+    await expect(page.locator(`[data-builds-mod="${GALVANIZED_DIFFUSION}"]`)).toBeVisible();
+  });
+
+  test("choosing a target adds damage figures against that faction", async () => {
+    await page.locator(`[data-builds-gun="${LEX_PRIME}"]`).click();
+    await expect(stat("burstDps")).toHaveCount(3);
+    await expect(stat("burstVs")).toHaveCount(0);
+
+    const target = page.locator("[data-builds-view] select");
+    await target.selectOption("corpus");
+
+    // One label and one figure per column, for the recommendation and config A.
+    await expect(stat("burstVs")).toHaveCount(3);
+    await expect(stat("sustainedVs")).toHaveCount(3);
+
+    await target.selectOption("");
+    await expect(stat("burstVs")).toHaveCount(0);
+  });
+
+  test("turning capacity off hides its estimate without removing an unlocked arcane", async () => {
+    await page.locator(`[data-builds-gun="${LEX_PRIME}"]`).click();
+    await expect(page.locator("[data-builds-capacity-note]")).toBeVisible();
+    await page.locator("[data-builds-fit]").click();
+    await expect(page.locator("[data-builds-capacity]")).toHaveCount(0);
+    await expect(page.locator("[data-builds-capacity-note]")).toHaveCount(0);
+    await expect(page.locator("[data-builds-arcane]")).toHaveCount(1);
+    await page.locator("[data-builds-fit]").click();
+    await expect(page.locator("[data-builds-capacity]")).toContainText("21/60");
+  });
+
+  test("explains when an imported gun has no usable capacity data", async () => {
+    await page.locator(`[data-builds-gun="${TRUMNA_PRIME}"]`).click();
+    await expect(page.locator("[data-builds-capacity]")).toHaveCount(0);
+    await expect(page.locator("[data-builds-capacity-note]")).toContainText("no usable weapon XP");
+    await page.screenshot({ path: test.info().outputPath("builds-missing-capacity.png") });
+  });
+
+  test("a weapon the advisor cannot build for says why", async () => {
+    await page.locator(`[data-builds-gun="${UNKNOWN_BOW}"]`).click();
+    await expect(page.locator("[data-builds-unsupported]")).toBeVisible();
+    await expect(page.locator("[data-builds-mod]")).toHaveCount(0);
+  });
+
+  test("search narrows the gun list", async () => {
+    await page.locator("[data-builds-view] [data-search-focus]").fill("trumna");
+    await expect(page.locator("[data-builds-gun]")).toHaveCount(1);
+    await page.locator("[data-builds-view] [data-search-focus]").fill("");
+    await expect(page.locator("[data-builds-gun]")).toHaveCount(3);
+  });
+});

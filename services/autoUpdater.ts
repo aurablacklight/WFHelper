@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { app } from "electron";
 import { autoUpdater } from "electron-updater";
+import { FRIENDS_BETA } from "../config/runtime/distribution";
 import type { UpdateInfo, ProgressInfo, UpdateDownloadedEvent } from "electron-updater";
 
 import { markQuitting } from "./appLifecycle";
@@ -233,7 +234,7 @@ export function initialize(windowRef: import("electron").BrowserWindow): void {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.allowPrerelease = false;
+  autoUpdater.allowPrerelease = FRIENDS_BETA;
   autoUpdater.logger = require("electron-log/main");
 
   autoUpdater.on("checking-for-update", () => {

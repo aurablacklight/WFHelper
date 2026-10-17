@@ -163,8 +163,10 @@
     {/if}
     {updateButtonText}
   </button>
-  <span class="shrink-0 text-[10px] opacity-50" title={$tr("statusbar.appVersionTitle")}
-    >v{import.meta.env.VITE_APP_VERSION || "?"}</span
+  <span
+    class="shrink-0 font-semibold text-text-secondary"
+    data-app-version
+    title={$tr("statusbar.appVersionTitle")}>v{import.meta.env.VITE_APP_VERSION || "?"}</span
   >
 </footer>
 
