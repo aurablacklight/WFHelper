@@ -20,9 +20,10 @@ Upstream `WFHelper/wfhelper` (git remote `upstream`) is someone else's project.
 
 ## Language
 
-The fork supports English only. Do not write, update or ask for reviews of
-translations; the German and Chinese files under `src/i18n/` are inherited
-from upstream.
+The app UI is English only: `src/i18n/en.json` is the single catalogue. Do not
+add, write or ask for reviews of translations. The Game language setting is
+separate and stays: it matches item names from a Warframe client running in
+another language, using DE's published name tables.
 
 ## Tooling
 
