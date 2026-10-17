@@ -266,8 +266,6 @@ test.describe("Profit-Taker analytics", () => {
     await page.locator(`[data-pt-${direction === "prev" ? "next" : "prev"}]`).click();
     await expect(page.locator('[data-pt-stat-value="total"]')).toHaveText(cardText(METRICS.total));
     await expect(page.locator("[data-pt-notes]")).toHaveValue("Driver note for the recorded run");
-    await openPt(page);
-    await page.locator(`[data-pt-run="${BASE.id}"]`).click();
     await setLayoutViewport(page, 1100, 800);
     await expect(page.locator("[data-pt-stat]")).toHaveCount(6);
     await expect(page.locator('[data-pt-phase="4"] [data-pt-phase-elapsed]')).toHaveText("112.971");
