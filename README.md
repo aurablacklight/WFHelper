@@ -186,12 +186,6 @@ pnpm run dist:win   # build the Windows installer (NSIS)
   the inventory snapshot tool
 - AlecaFrame: the `lastData.dat` format the import reads
 
-## Support
-
-WFHelper is free and open source, with no ads or accounts. If it saves you
-plat, [Patreon](https://www.patreon.com/WFHelper) helps pay for the Cloudflare
-hosting it runs on. Supporters get a Discord role and a thank-you in the app.
-
 ## Disclaimer
 
 Unofficial fan project, not affiliated with or endorsed by Digital

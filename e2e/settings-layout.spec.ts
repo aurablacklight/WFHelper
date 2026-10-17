@@ -15,18 +15,6 @@ function shotPath(name: string): string {
   return test.info().outputPath(name);
 }
 
-// The panel only renders with a supporters cache; seeding one keeps the layout
-// deterministic since loadSupporters() then returns it without fetching.
-const SUPPORTERS_CACHE = JSON.stringify({
-  cachedAt: Date.now(),
-  supporters: [
-    { name: "Fixture Patron One", tier: "biggest" },
-    { name: "Fixture Patron Two", tier: "big" },
-    { name: "Fixture Patron Three", tier: "basic" },
-    { name: "Fixture Patron Four", tier: "basic" },
-  ],
-});
-
 const ROW_CATEGORIES = ["general", "notifications", "inventory", "overlay", "appearance"] as const;
 type Category = (typeof ROW_CATEGORIES)[number] | "about";
 const APPEARANCE_TABS = ["theme", "colors", "overlays", "sidebar", "css"] as const;
@@ -198,9 +186,7 @@ test.describe("Settings rows degrade without colliding", () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    harness = await launchElectronTestHarness("wfh-settings-layout-e2e-", {
-      storage: { wf_supporters_cache: SUPPORTERS_CACHE },
-    });
+    harness = await launchElectronTestHarness("wfh-settings-layout-e2e-");
     page = harness.page;
   });
 
@@ -315,56 +301,14 @@ test.describe("Settings rows degrade without colliding", () => {
     await expect(info).toBeHidden();
   });
 
-  test("the supporters panel keeps its gap to the About card", async () => {
-    await setFontScale(page, null);
-    for (const width of [700, 1240, 1920]) {
-      await openSettings(page, width, "about");
-      const panel = page.locator("[data-supporters]");
-      await expect(panel, "seeded supporters cache did not render the panel").toBeVisible();
-
-      const measured = await page.evaluate(() => {
-        const supporters = document.querySelector<HTMLElement>("[data-supporters]");
-        const about = document.querySelector<HTMLElement>("[data-settings-panel] article");
-        if (!supporters || !about) return null;
-        const s = supporters.getBoundingClientRect();
-        const a = about.getBoundingClientRect();
-        return {
-          beside: s.left >= a.right,
-          sideGap: s.left - a.right,
-          stackGap: s.top - a.bottom,
-          topDelta: Math.abs(s.top - a.top),
-          insideWindow: s.right <= innerWidth,
-        };
-      });
-      await page.screenshot({ path: shotPath(`settings-supporters-${width}.png`) });
-
-      expect(measured, "supporters panel disappeared mid-measurement").not.toBeNull();
-      expect(measured!.insideWindow, `supporters leave the window at ${width}px`).toBe(true);
-      if (width === 1920) {
-        expect(measured!.beside, `supporters not beside About at ${width}px`).toBe(true);
-      }
-      if (measured!.beside) {
-        expect(measured!.sideGap, `supporters touch the About card at ${width}px`).toBeGreaterThan(
-          8,
-        );
-        expect(measured!.topDelta, `supporters not aligned at ${width}px`).toBeLessThan(2);
-      } else {
-        expect(measured!.stackGap, `supporters touch the About card at ${width}px`).toBeGreaterThan(
-          8,
-        );
-      }
-    }
-  });
-
   // Each row keeps label and link on one line or fully stacks, and a raised font
   // scale is what forces it to show.
-  test("Settings About and Supporters cards stay readable when the window narrows", async () => {
+  test("Settings About card stays readable when the window narrows", async () => {
     await setFontScale(page, 1.25);
 
     for (const width of [700, 900, 1040, 1200]) {
       await openSettings(page, width, "about");
       await expect(page.locator(".settings-credit-row").first()).toBeVisible();
-      await expect(page.locator("[data-supporters]")).toBeVisible();
 
       const layout = await page.evaluate(() => {
         const rows = Array.from(document.querySelectorAll<HTMLElement>(".settings-credit-row"));
@@ -375,17 +319,12 @@ test.describe("Settings rows degrade without colliding", () => {
           document.querySelectorAll<HTMLElement>(".settings-link"),
           (link) => link.getBoundingClientRect().height,
         );
-        const supporters = document.querySelector<HTMLElement>("[data-supporters]");
-        const supportersRect = supporters?.getBoundingClientRect() ?? null;
         const content = document.querySelector<HTMLElement>("#content")!;
         return {
           rowCount: rows.length,
           // Math.max of nothing is -Infinity, so an absent element has to be
           // reported rather than folded into a ratio that passes anything.
           linkCount: linkHeights.length,
-          supporterChipCount: supporters
-            ? supporters.querySelectorAll("span[class*='rounded-full']").length
-            : 0,
           // Either the value sits beside the label or it wrapped underneath it.
           collisions: rows
             .filter((row) => {
@@ -399,22 +338,15 @@ test.describe("Settings rows degrade without colliding", () => {
           linkHeightRatio: linkHeights.length
             ? Math.max(...linkHeights) / Math.min(...linkHeights)
             : null,
-          chipsOutside: supporters
-            ? Array.from(supporters.querySelectorAll<HTMLElement>("span[class*='rounded-full']"))
-                .filter((chip) => chip.getBoundingClientRect().right > supportersRect!.right)
-                .map((chip) => chip.textContent ?? "")
-            : null,
           contentFits: content.scrollWidth <= content.clientWidth,
         };
       });
 
       expect(layout.rowCount, `no credit rows rendered at ${width}px`).toBeGreaterThan(0);
       expect(layout.linkCount, `no credit links rendered at ${width}px`).toBeGreaterThan(0);
-      expect(layout.supporterChipCount, `no supporter chips at ${width}px`).toBeGreaterThan(0);
       expect(layout.collisions, `credit rows collide at ${width}px`).toEqual([]);
       expect(layout.overflowing, `credit rows overflow at ${width}px`).toEqual([]);
       expect(layout.linkHeightRatio!, `a credit link wraps at ${width}px`).toBeLessThan(1.6);
-      expect(layout.chipsOutside, `supporter chips escape the card at ${width}px`).toEqual([]);
       expect(layout.contentFits, `settings scrolls sideways at ${width}px`).toBe(true);
     }
 

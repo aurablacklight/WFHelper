@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { DISCORD_URL, PATREON_URL } from "../../config/links.js";
+  import { DISCORD_URL } from "../../config/links.js";
   import { locale, tr } from "../../lib/i18n.js";
   import { invoke, on, send } from "../../lib/ipc.js";
   import type { RelicDataInfo } from "../../../config/shared/relicDataInfo.js";
@@ -120,12 +120,6 @@
     <div class="settings-credit-row">
       <span>{$tr("settings.creditHelp")}</span>
       <DocsLink />
-    </div>
-    <div class="settings-credit-row">
-      <span>{$tr("settings.creditSupport")}</span>
-      <span class="flex flex-wrap items-center justify-end gap-x-2.5 gap-y-1">
-        <button class="settings-link" onclick={() => openLink(PATREON_URL)}>Patreon</button>
-      </span>
     </div>
   </div>
 

@@ -84,12 +84,6 @@ test("newer downloaded relic data shows a relic the bundle lacks", async () => {
       status: 200,
       body: relicDocument(),
     },
-    // Settings > About asks for its supporters panel.
-    {
-      pattern: "^https://api\\.wfhelper\\.com/v1/supporters(?:\\?|$)",
-      status: 503,
-      body: { error: "fixture_unavailable" },
-    },
   ]);
   let harness: ElectronTestHarness | undefined;
   try {
