@@ -228,12 +228,10 @@ Bugs found by checking against real data, all fixed:
 
 ## Next steps
 
-- Follow `validation.md`: first compare one Kuva/Tenet/Coda Upgrade screen and
-  polarity costs, then validate two or three builds in the Simulacrum.
+- Follow `validation.md`: the Tenet Arca Plasmor Upgrade screen and A/B series
+  are done; the Kuva Brakk checks are prepared next.
 - The in-product agent that calls the advisor as a tool was deferred; see
   `../adr/0001-deterministic-build-calculator-before-any-agent.md`.
-- The German and Chinese strings for the Builds view were written without a
-  native review.
 
 The section below is the historical build log. The follow-up section above and
 `damage-rules.md` supersede its old capacity handling and validation claims.

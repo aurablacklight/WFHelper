@@ -121,7 +121,47 @@ config effects not modelled remain important limitations.
   builds to verify the shared additive damage bucket. Use arcanes already owned.
 - Measure one full firing/reload cycle for burst, held and charge weapons. Test
   fire-rate changes too; an incorrect timing model can change mod rankings.
-- Ask native German and Chinese readers to review the Builds labels and notes.
+
+### Prepared: Kuva Brakk (2026-10-17)
+
+A second progenitor weapon, a secondary and a Kuva bonus, where the Tenet Arca
+Plasmor covered a primary and a Tenet bonus. Predictions come from the
+October 11 inventory snapshot; if any config changed since, the saved-config
+numbers will not match and only the bonus and capacity checks still apply.
+
+Upgrade screen, config A, stacks off:
+
+| Check         | Advisor predicts                                                    |
+| ------------- | ------------------------------------------------------------------- |
+| Bonus element | 44.0% Heat                                                          |
+| Capacity      | Total 80 at rank 40                                                 |
+| Arsenal stats | Viral 103.7, Heat 78.2, total 241.9; multishot 21; crit 83.2%, 4.2× |
+|               | Status 40.0%; fire rate 5.00; magazine 11; reload 1.10s             |
+
+If the bonus shows anything other than 44% Heat, record it before anything
+else: it is the second data point for the bonus percentage mapping.
+
+Optional Simulacrum A/B against the same Grineer heavy target as the Arca
+Plasmor series. The recommendation is a temporary reversible loadout change;
+do not overwrite config A, B or C.
+
+| Recommended, any order | Rank |
+| ---------------------- | ---- |
+| Barrel Diffusion       | 5    |
+| Hornet Strike          | 10   |
+| Primed Target Cracker  | 10   |
+| Primed Pistol Gambit   | 10   |
+| Lethal Torrent         | 5    |
+| Accelerated Isotope    | 3    |
+| Deep Freeze            | 5    |
+| Pathogen Rounds        | 5    |
+
+Place Deep Freeze before Pathogen Rounds so Cold + Toxin forms Viral. Expected
+Arsenal stats: Radiation 41.5, Viral 124.4, Heat 21.1, total 235.0; multishot
+28; status 11.1%; fire rate 10.00. Capacity at most 66 of 80. Against Grineer
+the model ranks it well above config A: about 397k burst/199k sustained
+against 192k/128k. That ordering is the hypothesis to test, using the
+three-fresh-enemy protocol above.
 
 ## Observation record
 

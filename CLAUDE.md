@@ -18,6 +18,12 @@ Upstream `WFHelper/wfhelper` (git remote `upstream`) is someone else's project.
 - If the upstream maintainer ever asks for the fork's changes, the owner is
   open to it, but the owner makes that call and does the talking.
 
+## Language
+
+The fork supports English only. Do not write, update or ask for reviews of
+translations; the German and Chinese files under `src/i18n/` are inherited
+from upstream.
+
 ## Tooling
 
 - `gh` resolves to upstream when no default repo is set. Pass
