@@ -65,8 +65,7 @@ describe("riven overlay startup", () => {
     // markRendererReady never runs and the zoom the navigation commit reset
     // stays at 1.0 on displays with a non-1 base zoom.
     const readyFn =
-      rivenOverlayIpcSource.match(/export function markRivenRendererReady\([\s\S]*?\n\}/)?.[0] ??
-      "";
+      rivenOverlayIpcSource.match(/function markRivenRendererReady\([\s\S]*?\n\}/)?.[0] ?? "";
     expect(readyFn).toContain("entry.controller.markRendererReady(senderId)");
   });
 });

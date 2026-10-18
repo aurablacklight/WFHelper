@@ -7,8 +7,8 @@ import {
 } from "../../config/shared/ipcChannels";
 
 import { createOverlayScanController } from "../../ipc/overlay/scan";
+import { overlayBoundsPatch } from "../../ipc/overlay/registry";
 import {
-  createOverlayWindowBoundsChangeHandler,
   createOverlayWindowsController,
   moveOverlayWindowBy,
   moveWindowBy,
@@ -1656,51 +1656,6 @@ describe("moveWindowBy", () => {
   });
 });
 
-describe("createOverlayWindowBoundsChangeHandler", () => {
-  it("saves bounds and retires the drag hint on live moves, except for the arbi summary", () => {
-    const ctx = {
-      overlaySettings: { overlayWindowBounds: {} } as unknown as OverlaySettings,
-    };
-    const save = vi.fn();
-    const handler = createOverlayWindowBoundsChangeHandler({ ctx, save });
-
-    handler("arbiSummary", { x: 30, y: 40 });
-    expect(ctx.overlaySettings.overlayWindowBounds.arbiSummary).toEqual({ x: 30, y: 40 });
-    expect(ctx.overlaySettings.overlayDragHintDismissed).toBeUndefined();
-
-    handler("reward", { x: 10, y: 20, displayId: "1" });
-    expect(ctx.overlaySettings.overlayWindowBounds.reward).toEqual({
-      x: 10,
-      y: 20,
-      displayId: "1",
-    });
-    expect(ctx.overlaySettings.overlayDragHintDismissed).toBe(true);
-    expect(save).toHaveBeenCalledTimes(2);
-  });
-
-  it("preserves custom dimensions and scale when only the position changes", () => {
-    const ctx = {
-      overlaySettings: {
-        overlayWindowBounds: {
-          reward: { x: 10, y: 20, width: 1100, height: 200 },
-        },
-        overlayWindowScales: { reward: 1.25 },
-      } as unknown as OverlaySettings,
-    };
-    const handler = createOverlayWindowBoundsChangeHandler({ ctx, save: vi.fn() });
-
-    handler("reward", { x: 30, y: 40 });
-
-    expect(ctx.overlaySettings.overlayWindowBounds.reward).toEqual({
-      x: 30,
-      y: 40,
-      width: 1100,
-      height: 200,
-    });
-    expect(ctx.overlaySettings.overlayWindowScales.reward).toBe(1.25);
-  });
-});
-
 function createResizeProbe(
   windowHeight = 140,
   grantTrim: { width: number; height: number } | null = null,
@@ -1772,7 +1727,12 @@ function createResizeProbe(
     } as OverlaySettings,
     overlayInteractiveMode: true,
   };
-  const persist = createOverlayWindowBoundsChangeHandler({ ctx, save: () => {} });
+  const persist = (key: OverlayWindowKey, bounds: OverlaySavedWindowBounds) => {
+    ctx.overlaySettings = {
+      ...ctx.overlaySettings,
+      ...overlayBoundsPatch(ctx.overlaySettings, key, bounds),
+    };
+  };
 
   const controller = createOverlayWindowsController({
     app: { getAppPath: () => "D:\\app" } as unknown as typeof import("electron").app,

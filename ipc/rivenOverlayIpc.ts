@@ -3,10 +3,13 @@ import { BrowserWindow, app, screen, shell } from "electron";
 import { getOverlayDescriptor } from "../config/shared/overlayLayout";
 import ctx from "./context";
 import { assertRivenOverlayRendererSender, onAuthorized } from "./ipcSecurity";
+import { createOverlayWindowsController } from "./overlay/windows";
 import {
-  createOverlayWindowBoundsChangeHandler,
-  createOverlayWindowsController,
-} from "./overlay/windows";
+  overlayWindow,
+  overlayWindowSlot,
+  registerOverlay,
+  rememberOverlayWindowBounds,
+} from "./overlay/registry";
 import {
   applyOverlayZOrder,
   canRaiseOverlayWindows,
@@ -65,13 +68,6 @@ const APP_ROOT = app.getAppPath();
 const RIVEN_WINDOW_FILE = path.join(APP_ROOT, "renderer", "riven-overlay.html");
 
 let _rivenInteractive = false;
-let persistOverlaySettings: (() => void) | null = null;
-const rememberOverlayWindowBounds = createOverlayWindowBoundsChangeHandler({
-  ctx,
-  save: () => {
-    persistOverlaySettings?.();
-  },
-});
 
 const RIVEN_CANVAS = getOverlayDescriptor("rivenLeft").canvas;
 const RIVEN_TOP_OFFSET = 80;
@@ -110,10 +106,7 @@ const rivenWindowBaseOptions = {
 
 const rivenLeftWindowsController = createOverlayWindowsController({
   ...rivenWindowBaseOptions,
-  getOverlayWindow: () => ctx.rivenOverlayLeftWindow,
-  setOverlayWindow: (window) => {
-    ctx.rivenOverlayLeftWindow = window;
-  },
+  ...overlayWindowSlot("rivenLeft"),
   getOverlayInteractiveMode: () => _rivenInteractive,
   setOverlayInteractiveModeState: (enabled) => {
     _rivenInteractive = !!enabled;
@@ -128,10 +121,7 @@ const rivenLeftWindowsController = createOverlayWindowsController({
 
 const rivenRightWindowsController = createOverlayWindowsController({
   ...rivenWindowBaseOptions,
-  getOverlayWindow: () => ctx.rivenOverlayRightWindow,
-  setOverlayWindow: (window) => {
-    ctx.rivenOverlayRightWindow = window;
-  },
+  ...overlayWindowSlot("rivenRight"),
   getOverlayInteractiveMode: () => _rivenInteractive,
   setOverlayInteractiveModeState: (enabled) => {
     _rivenInteractive = !!enabled;
@@ -156,7 +146,7 @@ function sendToRivenWindows(channel: string, ...args: unknown[]): void {
   forEachRivenWindow((win) => win.webContents.send(channel, ...args));
 }
 
-export function markRivenRendererReady(senderId: number): boolean {
+function markRivenRendererReady(senderId: number): boolean {
   const entry = rivenWindowEntries().find(
     ({ win }) => win !== null && !win.isDestroyed() && win.webContents.id === senderId,
   );
@@ -179,6 +169,21 @@ function rivenWindowEntries() {
     { win: ctx.rivenOverlayLeftWindow, controller: rivenLeftWindowsController },
     { win: ctx.rivenOverlayRightWindow, controller: rivenRightWindowsController },
   ];
+}
+
+// Both panels share one interaction mode and one ready handshake. A panel's renderer
+// gets events straight away: replay after a reload is markRivenRendererReady's job.
+for (const [kind, controller] of [
+  ["rivenLeft", rivenLeftWindowsController],
+  ["rivenRight", rivenRightWindowsController],
+] as const) {
+  registerOverlay(kind, {
+    reposition: () => controller.positionOverlayWindow(controller.getAnchorMeta()),
+    placementRect: () => controller.getOverlayBoundsForActiveDisplay(),
+    send: (channel, payload) => overlayWindow(kind)?.webContents.send(channel, payload),
+    isInteractive: () => _rivenInteractive,
+    markReady: markRivenRendererReady,
+  });
 }
 
 function getRivenWindows(): (InstanceType<typeof BrowserWindow> | null)[] {
@@ -269,13 +274,6 @@ export function isRivenInteractiveMode(): boolean {
   return _rivenInteractive;
 }
 
-export function getRivenPlacementRects() {
-  return {
-    left: rivenLeftWindowsController.getOverlayBoundsForActiveDisplay(),
-    right: rivenRightWindowsController.getOverlayBoundsForActiveDisplay(),
-  };
-}
-
 function createRivenWindow(side: "left" | "right", options: { show?: boolean }): void {
   const controller = side === "left" ? rivenLeftWindowsController : rivenRightWindowsController;
   controller.createOverlayWindow(options);
@@ -292,7 +290,7 @@ function createFreshRivenWindows(
   if (_rivenInteractive) sendToRivenWindows(OVERLAY_INTERACTION_MODE, { interactive: true });
 }
 
-export function positionRivenOverlayWindows(): void {
+function positionRivenOverlayWindows(): void {
   rivenLeftWindowsController.positionOverlayWindow(rivenLeftWindowsController.getAnchorMeta());
   rivenRightWindowsController.positionOverlayWindow(rivenRightWindowsController.getAnchorMeta());
 }
@@ -861,11 +859,7 @@ export function onRivenChoiceConfirmed(): void {
   }, CHOICE_RESCAN_DELAY_MS);
 }
 
-export { setRivenInteractiveMode, forEachRivenWindow };
-
-export function configureOverlaySettingsPersistence(persist: () => void): void {
-  persistOverlaySettings = persist;
-}
+export { setRivenInteractiveMode };
 
 export function register(): void {
   onAuthorized(RIVEN_OVERLAY_CLOSE, assertRivenOverlayRendererSender, () => {
