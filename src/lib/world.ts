@@ -1,4 +1,5 @@
 import { EQUIPMENT_COLLECTIONS } from "../../config/shared/gearCollections.js";
+import { isEquipmentKind } from "../../config/shared/itemKind.js";
 import type { ItemDbEntry, RawInventoryData } from "../types/inventory.js";
 import type { VaultTrader, VaultTraderInventoryItem, WorldState } from "../types/world.js";
 import { PLANET_ICON_URLS } from "./assetUrls.js";
@@ -24,34 +25,11 @@ function isLikelyPrimeGear(name: string = ""): boolean {
   );
 }
 
-const PRIME_CATS = new Set([
-  "warframe",
-  "weapon",
-  "companion",
-  "warframes",
-  "primary",
-  "secondary",
-  "melee",
-  "sentinels",
-  "pets",
-  "sentinel weapons",
-]);
-const PRIME_PRODUCTS = new Set([
-  "suits",
-  "longguns",
-  "pistols",
-  "melee",
-  "sentinels",
-  "sentinelweapons",
-]);
-
+// Prime gear or a part of it; Railjack has no Primes for Varzia to sell.
 function isResurgenceCandidate(entry: ItemDbEntry = {}): boolean {
   if (!isLikelyPrimeGear(entry.name || "")) return false;
-  const category = (entry.category || "").toLowerCase();
-  const product = (entry.productCategory || "").toLowerCase();
   const type = (entry.type || "").toLowerCase();
-  if (PRIME_CATS.has(category)) return true;
-  if (PRIME_PRODUCTS.has(product)) return true;
+  if (isEquipmentKind(entry.kind) && entry.kind !== "railjack") return true;
   if (/(warframe|rifle|shotgun|sniper|bow|pistol|melee|sentinel|companion)/.test(type)) {
     return true;
   }
@@ -323,10 +301,8 @@ export function resolveCircuitRotation(
   return weeks.map(resolve);
 }
 
-const WARFRAME_CATS = new Set(["warframe", "warframes", "suits"]);
-
-function entryCategory(entry: ItemDbEntry): string {
-  return (entry.category || entry.productCategory || "").toLowerCase();
+function isWarframeEntry(entry: ItemDbEntry): boolean {
+  return entry.kind === "warframe" && !entry.kindPart;
 }
 
 interface SubsumedSets {
@@ -347,7 +323,7 @@ function buildSubsumedSets(
 /** Family matching catches the same frame under another uniqueName, but never a
  *  Prime: its base being fed says nothing about the Prime. */
 function isSubsumedFrame(entry: ItemDbEntry, uniqueName: string, sets: SubsumedSets): boolean {
-  if (!WARFRAME_CATS.has(entryCategory(entry))) return false;
+  if (!isWarframeEntry(entry)) return false;
   if (sets.uniqueNames.has(uniqueName)) return true;
   const name = entry.name || "";
   return isSubsumableFrame(name) && isFrameSubsumed(name, sets.families);
@@ -544,7 +520,7 @@ function toCircuitChoice(entry: ResolvedEntry, sets: OwnedSets): CircuitChoice {
   const nameKey = circuitNameKey(entry.name);
   const owned = nameKey.endsWith(INCARNON_SUFFIX)
     ? incarnonAdapterOwned(entry.uniqueName, nameKey.slice(0, -INCARNON_SUFFIX.length), sets)
-    : WARFRAME_CATS.has(entryCategory(entry))
+    : isWarframeEntry(entry)
       ? sets.ownedSuits.has(entry.uniqueName) || subsumed
       : sets.ownedWeapons.has(entry.uniqueName);
   return {

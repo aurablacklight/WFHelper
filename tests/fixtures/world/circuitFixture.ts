@@ -1,4 +1,5 @@
 import type { ItemDbEntry, RawInventoryData } from "../../../src/types/inventory.js";
+import { withSettledKinds } from "../itemKind.js";
 
 export const TORID = "/Lotus/Weapons/Tenno/LongGuns/Torid";
 const TORID_DUPE = "/Lotus/Weapons/Tenno/LongGuns/ToridDupe";
@@ -24,7 +25,7 @@ const NOVA_PRIME = "/Lotus/Powersuits/AntiMatter/NovaPrime";
 const NOVA_PRIME_DUPE = "/Lotus/Powersuits/AntiMatter/NovaPrimeAlt";
 const SOMA_PRIME = "/Lotus/Weapons/Tenno/Rifle/SomaPrime";
 
-export const CIRCUIT_DB: Record<string, ItemDbEntry> = {
+export const CIRCUIT_DB: Record<string, ItemDbEntry> = withSettledKinds({
   [TORID]: { name: "Torid", imageUrl: "torid.png", category: "Primary" },
   [TORID_DUPE]: { name: "Torid", imageUrl: "torid-dupe.png", category: "Primary" },
   [TORID_ADAPTER]: {
@@ -67,7 +68,7 @@ export const CIRCUIT_DB: Record<string, ItemDbEntry> = {
   [NOVA_PRIME]: { name: "Nova Prime", imageUrl: "nova-prime.png", category: "Warframe" },
   [NOVA_PRIME_DUPE]: { name: "Nova Prime", imageUrl: "nova-prime-alt.png", category: "Warframe" },
   [SOMA_PRIME]: { name: "Soma Prime", imageUrl: "soma-prime.png", category: "Primary" },
-};
+});
 
 export const CIRCUIT_INVENTORY: RawInventoryData = {
   Suits: [{ ItemType: EXCALIBUR }],

@@ -1,5 +1,6 @@
 import type { MasteryStatus } from "../../config/shared/masteryTypes.js";
 import type { MarketAcquisition } from "../../config/shared/marketAcquisition.js";
+import type { ItemKindFields } from "../../config/shared/itemKind.js";
 export type { MasteryStatus };
 export type PartType = "normal" | "prime";
 
@@ -41,7 +42,7 @@ export interface ComponentInfo {
   [key: string]: unknown;
 }
 
-export interface ItemDbEntry {
+export interface ItemDbEntry extends ItemKindFields {
   /** English. Every by-name lookup and market slug is built from this. */
   name?: string;
   nameIsFallback?: true;

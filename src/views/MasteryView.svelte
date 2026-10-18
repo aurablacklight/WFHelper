@@ -423,7 +423,7 @@
       const foundryStatus = foundryStatusFor(item, foundry);
       // undefined, not false: the strict tri-state filter drops those rows entirely.
       const isSubsumed =
-        item.category === "Warframes" && isSubsumableFrame(item.name)
+        db[item.uniqueName ?? ""]?.kind === "warframe" && isSubsumableFrame(item.name)
           ? isFrameSubsumed(item.name, subsumed)
           : undefined;
       const components = (item.components || []).map((comp) => ({

@@ -18,6 +18,7 @@ import {
 } from "../../../../src/lib/inventory/itemClassification.js";
 import type { ResolvedItem } from "../../../../src/lib/inventory/itemClassification.js";
 import type { ItemDbEntry } from "../../../../src/types/inventory.js";
+import { settledEntry, withSettledKinds } from "../../../fixtures/itemKind.js";
 
 function resolved(name: string, extra: Partial<ResolvedItem> = {}): ResolvedItem {
   return { name, imageUrl: null, ...extra };
@@ -409,28 +410,49 @@ describe("inferCategory", () => {
     expect(inferCategory("/Lotus/OperatorAmplifiers/Foo", "misc")).toBe("amps");
   });
 
-  it("uses productCategory mapping when available", () => {
-    expect(inferCategory("/Lotus/X", "misc", { productCategory: "Suits" })).toBe("warframes");
+  it("files gear under its settled kind", () => {
+    const excalibur = "/Lotus/Powersuits/Excalibur/Excalibur";
+    const entry = settledEntry(excalibur, { category: "Warframe", productCategory: "Suits" });
+    expect(inferCategory(excalibur, "misc", entry)).toBe("warframes");
   });
 
   it("falls back to default category", () => {
     expect(inferCategory("/Lotus/X", "misc", {})).toBe("misc");
   });
 
-  // Same path families classifyForFoundry buckets; both read them from here.
+  it("files a part or blueprint under its gear's kind, whichever source named it", () => {
+    const braton = "/Lotus/Weapons/Tenno/Rifle/BratonPrime";
+    const barrel = "/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeBarrel";
+    const blueprint = "/Lotus/Types/Recipes/Weapons/BratonPrimeBlueprint";
+    const db = withSettledKinds({
+      [braton]: { category: "Weapon", productCategory: "LongGuns" },
+      // DE's export calls the barrel a MiscItems resource; @wfcd stamps LongGuns on the blueprint.
+      [barrel]: { category: "Resource", productCategory: "MiscItems", componentOf: braton },
+      [blueprint]: { category: "Recipe", productCategory: "LongGuns", componentOf: braton },
+    });
+    expect(inferCategory(barrel, "misc", db[barrel])).toBe("primary");
+    expect(inferCategory(blueprint, "misc", db[blueprint])).toBe("primary");
+  });
+
+  // DE exports every modular and pet part as productCategory "Pistols".
   it("keeps modular and pet parts out of the weapon slots", () => {
-    const asPistol: ItemDbEntry = { productCategory: "Pistols" };
-    const paths = [
+    const asPistol: ItemDbEntry = { category: "Weapon", productCategory: "Pistols" };
+    const modular = [
       "/Lotus/Types/Vehicles/Hoverboard/HoverboardParts/PartComponents/HoverboardSolarisA/HoverboardSolarisADeck",
       "/Lotus/Weapons/SolarisUnited/Secondary/SUModularSecondarySet1/Barrel/SUModularSecondaryBarrelAPart",
       "/Lotus/Weapons/Infested/Pistols/InfKitGun/Barrels/InfBarrelBeam/InfModularBarrelBeamPart",
       "/Lotus/Weapons/Ostron/Melee/ModularMelee01/Tip/TipFour",
       "/Lotus/Types/Friendly/Pets/MoaPets/MoaPetParts/MoaPetHeadLambeo",
+    ];
+    for (const path of modular) {
+      expect(inferCategory(path, "misc", settledEntry(path, asPistol))).toBe("misc");
+    }
+    const petParts = [
       "/Lotus/Types/Friendly/Pets/ZanukaPets/ZanukaPetParts/ZanukaPetPartHeadA",
       "/Lotus/Types/Friendly/Pets/CreaturePets/CreaturePetParts/Deimos/InfestedCritterMutagenA",
     ];
-    for (const path of paths) {
-      expect(inferCategory(path, "misc", asPistol)).toBe("misc");
+    for (const path of petParts) {
+      expect(inferCategory(path, "misc", settledEntry(path, asPistol))).toBe("companions");
     }
   });
 });

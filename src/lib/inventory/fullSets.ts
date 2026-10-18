@@ -1,4 +1,5 @@
 import { ownedComponentCount } from "../../../config/shared/componentNames.js";
+import { isEquipmentKind } from "../../../config/shared/itemKind.js";
 import { mergeDuplicateIngredients } from "../../../config/shared/recipeRows.js";
 import type { ComponentInfo, ItemDbEntry, ParsedItem, PartType } from "../../types/inventory.js";
 import {
@@ -89,8 +90,6 @@ function isEligibleFullSetRoot(
 
   if (resolved.isPrime === true || /\bprime\b/i.test(resolved.name)) return true;
 
-  const category = String(dbEntry.category || "").toLowerCase();
-
   if (
     /(warframe|rifle|shotgun|sniper|bow|pistol|melee|companion|sentinel|archwing|necramech|orbiter|landing craft)/.test(
       type,
@@ -99,9 +98,7 @@ function isEligibleFullSetRoot(
     return true;
   }
 
-  return /(warframe|weapon|primary|secondary|melee|sentinel|pet|companion|archwing|necramech)/.test(
-    category,
-  );
+  return isEquipmentKind(dbEntry.kind) && !dbEntry.kindPart;
 }
 
 export function buildFullSetItems(

@@ -7,65 +7,29 @@ import { aggregateComponentOwnership } from "../config/shared/componentOwnership
 import type { MarketAcquisition } from "../config/shared/marketAcquisition";
 import { sanitizeDisplayName } from "../config/shared/displayName";
 import { EQUIPMENT_COLLECTIONS, MODULAR_COLLECTIONS } from "../config/shared/gearCollections";
+import { isEquipmentKind, isSuitKind, type ItemKind } from "../config/shared/itemKind";
 import { withoutFoundryPending } from "../config/shared/foundryPending";
 import { masteryRankToXp, masteryXpToRank } from "../config/shared/masteryXp";
 import { toFiniteNumber } from "../config/shared/numeric";
 import { mergeDuplicateIngredients } from "../config/shared/recipeRows";
 import type { MasteryStatus } from "../config/shared/masteryTypes";
 
-// Newer items arrive as "Warframes"/"Primary", older ones singular; accept both.
-const MASTERABLE_DB_CATEGORIES = new Set([
-  "Warframe",
-  "Weapon",
-  "Companion",
-  "Railjack",
-  "Warframes",
-  "Primary",
-  "Secondary",
-  "Melee",
-  "Companions",
-  "Archwing",
-]);
-
-// productCategory -> display label
-const PRODUCT_DISPLAY: Record<string, string> = {
-  Suits: "Warframes",
-  LongGuns: "Primary",
-  Pistols: "Secondary",
-  Melee: "Melee",
-  Sentinels: "Companions",
-  SentinelWeapons: "Companions",
-  SpaceSuits: "Archwing",
-  SpaceGuns: "Archwing",
-  SpaceMelee: "Archwing",
-  OperatorAmps: "Amps",
-  MechSuits: "Necramech",
-  CrewShipWeapons: "Railjack",
+// Item kind -> mastery list category. Railjack items are read, then dropped.
+const MASTERY_CATEGORY_BY_KIND: Partial<Record<ItemKind, string>> = {
+  warframe: "Warframes",
+  primary: "Primary",
+  secondary: "Secondary",
+  melee: "Melee",
+  archwing: "Archwing",
+  "arch-gun": "Archwing",
+  "arch-melee": "Archwing",
+  companion: "Companions",
+  "companion-weapon": "Companions",
+  amp: "Amps",
+  necramech: "Necramech",
+  "k-drive": "Misc",
+  railjack: "Railjack",
 };
-
-// Path patterns -> display category (fallback when productCategory is missing)
-const PATH_CATEGORY_RULES: Array<{ pattern: RegExp; category: string }> = [
-  { pattern: /\/OperatorAmps?\//i, category: "Amps" },
-  { pattern: /\/OperatorAmplifiers?\//i, category: "Amps" },
-  { pattern: /\/Sentinels\/.*Weapons?\//i, category: "Companions" },
-  { pattern: /\/Sentinels?\//i, category: "Companions" },
-  { pattern: /\/Pets?\//i, category: "Companions" },
-  { pattern: /\/SpaceSuits?\//i, category: "Archwing" },
-  { pattern: /\/SpaceGuns?\//i, category: "Archwing" },
-  { pattern: /\/SpaceMelee\//i, category: "Archwing" },
-  { pattern: /\/MechSuits?\//i, category: "Necramech" },
-  { pattern: /\/CrewShip.*Weapons?\//i, category: "Railjack" },
-  { pattern: /\/Suits\//i, category: "Warframes" },
-  { pattern: /\/ModularMelee\b|\/Ostron.*Melee|\/Zaw/i, category: "Melee" },
-  {
-    pattern: /\/ModularPistol|\/SolarisUnited.*Secondary|\/Kitgun.*Pistol/i,
-    category: "Secondary",
-  },
-  { pattern: /\/ModularPrimary|\/SolarisUnited.*Primary|\/Kitgun.*Rifle/i, category: "Primary" },
-  { pattern: /\/LongGuns\//i, category: "Primary" },
-  { pattern: /\/Pistols\//i, category: "Secondary" },
-  { pattern: /\/Melee\//i, category: "Melee" },
-];
 
 const KEYWORD_RULES: Array<{ pattern: RegExp; keywords: string[] }> = [
   { pattern: /\/ModularMelee\b|\/Ostron.*Melee|\/InfZaw|\/Zaw/i, keywords: ["zaw", "modular"] },
@@ -131,7 +95,6 @@ const KITGUN_CHAMBER_NAMES = new Set([
   "tombfinger",
   "vermisplicer",
 ]);
-const ZAW_STRIKE_PATH_PATTERN = /\/Ostron\/Melee\/ModularMelee/i;
 const MODULAR_COMPANION_MODEL_PATTERN =
   /\/Pets\/(?:MoaPets\/MoaPetParts\/MoaPetHead[^/]*|ZanukaPets\/ZanukaPetParts\/ZanukaPetPartHead[ABC])$/i;
 const VINQUIBUS_PRIMARY_UNIQUE_NAME = "/Lotus/Weapons/Tenno/Bayonet/TnBayonetRifleWeapon";
@@ -146,17 +109,12 @@ const INV_CATEGORIES: Record<string, number> = Object.fromEntries(
 // XPInfo lacks containers; explicit identities keep pet weapons at weapon rate.
 function isSuitRateXpInfoItem(
   itemType: string,
-  dbItem: { category?: string; type?: string } | null,
+  dbItem: { kind?: ItemKind; kindPart?: true } | null,
 ): boolean {
-  return (
-    dbItem?.category === "Warframe" ||
-    dbItem?.category === "Companion" ||
-    MODULAR_COMPANION_MODEL_PATTERN.test(itemType) ||
-    /\/Hoverboard/i.test(itemType) ||
-    /k-drive/i.test(String(dbItem?.type || "")) ||
-    /\/CrewShip\/(?:RailJack\/Default)?Harness$/i.test(itemType) ||
-    /RailjackHarness$/i.test(itemType)
-  );
+  if (/\/CrewShip\/(?:RailJack\/Default)?Harness$/i.test(itemType)) return true;
+  if (/RailjackHarness$/i.test(itemType)) return true;
+  if (dbItem?.kind && !dbItem.kindPart) return isSuitKind(dbItem.kind);
+  return MODULAR_COMPANION_MODEL_PATTERN.test(itemType) || /\/Hoverboard/i.test(itemType);
 }
 
 const VENARI_UNIQUE_NAME_PATTERN = /\/Powersuits\/Khora\/Kavat\/Khora(?:Prime)?KavatPowerSuit$/i;
@@ -650,45 +608,6 @@ function getExcludeReason(
   return null;
 }
 
-function resolveDisplayCategoryInfo(
-  item: { productCategory?: string | null; category?: string; type?: string },
-  uniqueName: string,
-): { category: string; source: string } {
-  // K-Drive boards are currently exported with Weapon/Pistols metadata.
-  // Keep them in a dedicated misc bucket instead of Secondary.
-  if (/\/Hoverboard\//i.test(uniqueName) || /k-drive/i.test(String(item.type || ""))) {
-    return { category: "Misc", source: "override:k-drive" };
-  }
-
-  // Pet companion entries (hounds/moas/etc.) can also arrive as Weapon/Pistols.
-  if (/\/Pets?\//i.test(uniqueName) || /\bpets?\b/i.test(String(item.type || ""))) {
-    return { category: "Companions", source: "override:pets" };
-  }
-
-  // Operator amplifier parts should always be listed under Amps, even when productCategory is Pistols.
-  if (/\/OperatorAmplifiers?\//i.test(uniqueName)) {
-    return { category: "Amps", source: "path:OperatorAmplifiers" };
-  }
-  if (ZAW_STRIKE_PATH_PATTERN.test(uniqueName)) {
-    return { category: "Melee", source: "override:zaw-strike" };
-  }
-  if (item.productCategory && PRODUCT_DISPLAY[item.productCategory as string]) {
-    return {
-      category: PRODUCT_DISPLAY[item.productCategory as string],
-      source: `productCategory:${item.productCategory}`,
-    };
-  }
-  for (const { pattern, category } of PATH_CATEGORY_RULES) {
-    if (pattern.test(uniqueName)) return { category, source: `path:${pattern}` };
-  }
-  if (item.category === "Warframe")
-    return { category: "Warframes", source: "db-category:Warframe" };
-  if (item.category === "Companion")
-    return { category: "Companions", source: "db-category:Companion" };
-  if (item.category === "Railjack") return { category: "Railjack", source: "db-category:Railjack" };
-  return { category: "Other", source: "fallback:Other" };
-}
-
 function isAmpPrismMasterableOverride(item: { name?: string }, uniqueName: string): boolean {
   if (!/\/OperatorAmplifiers?\//i.test(uniqueName)) return false;
   // Builds keep the prism at .../Barrel/<part>, the Mote preset as a bare leaf.
@@ -845,7 +764,8 @@ export function getAllMasterableItems(): MasterableItem[] {
   for (const [uniqueName, item] of Object.entries(allItems)) {
     const displayName = sanitizeDisplayName(item.name || "Unknown");
 
-    if (!MASTERABLE_DB_CATEGORIES.has(item.category)) {
+    // A part of a gear item is never masterable itself.
+    if (!isEquipmentKind(item.kind) || item.kindPart) {
       continue;
     }
     const ampPrismOverride = isAmpPrismMasterableOverride(item, uniqueName);
@@ -871,9 +791,9 @@ export function getAllMasterableItems(): MasterableItem[] {
     }
     seenNames.add(nameKey);
 
-    const display = resolveDisplayCategoryInfo(item, uniqueName);
+    const category = MASTERY_CATEGORY_BY_KIND[item.kind] ?? "Other";
     const keywords = getKeywords(uniqueName, displayName);
-    if (display.category === "Railjack") {
+    if (category === "Railjack") {
       continue;
     }
     const masterableSource = ampPrismOverride
@@ -890,14 +810,14 @@ export function getAllMasterableItems(): MasterableItem[] {
       name: displayName,
       ...itemDb.localizedNameFields(uniqueName, displayName),
       uniqueName,
-      category: display.category,
+      category,
       imageUrl: item.imageUrl || null,
       isPrime: item.isPrime || false,
       masteryReq: item.masteryReq || 0,
       vaulted: item.vaulted || false,
       tradable: item.tradable || item.isPrime || false,
       keywords,
-      debugReason: `show:${masterableSource}; cat:${display.source}; dbCat:${item.category || "?"}; product:${item.productCategory || "?"}; type:${item.type || "?"}`,
+      debugReason: `show:${masterableSource}; kind:${item.kind}; dbCat:${item.category || "?"}; product:${item.productCategory || "?"}; type:${item.type || "?"}`,
       // Components from wfcd (blueprints, barrels, etc.)
       components: item.components || [],
       ...(item.marketBuyable ? { marketBuyable: true as const } : {}),

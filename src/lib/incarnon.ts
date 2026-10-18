@@ -1,3 +1,4 @@
+import { weaponSlotOf, type WeaponSlot } from "../../config/shared/itemKind.js";
 import type { ItemDbEntry, RawInventoryData } from "../types/inventory.js";
 import type { Translator } from "./i18n.js";
 import {
@@ -14,7 +15,7 @@ export const INCARNON_MAX_EVOLUTION = 5;
 
 type IncarnonKind = "genesis" | "native";
 type IncarnonStatus = "unlocked" | "adapter" | "missing";
-type IncarnonSlot = "primary" | "secondary" | "melee";
+type IncarnonSlot = WeaponSlot;
 export type IncarnonFilter = "all" | IncarnonStatus;
 
 export const INCARNON_FILTERS: readonly IncarnonFilter[] = [
@@ -62,13 +63,9 @@ const ADAPTER_SLOTS: Record<string, IncarnonSlot> = {
   Melee: "melee",
 };
 
+// A weapon part is not the weapon, and a modular part has no slot of its own.
 function slotOfEntry(entry: ItemDbEntry | undefined): IncarnonSlot | undefined {
-  const product = (entry?.productCategory || "").toLowerCase();
-  const category = (entry?.category || "").toLowerCase();
-  if (product === "longguns" || category === "primary") return "primary";
-  if (product === "pistols" || category === "secondary") return "secondary";
-  if (product === "melee" || category === "melee") return "melee";
-  return undefined;
+  return entry?.kindPart ? undefined : weaponSlotOf(entry);
 }
 
 function slotOfAdapter(uniqueName: string): IncarnonSlot | undefined {
