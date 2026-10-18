@@ -4,19 +4,15 @@ import type { ParsedItem, InventoryGroup, PartType } from "../types/inventory.js
 import type { WfmItemsLookup } from "../types/ipc.js";
 import type { WfmOrdersResult } from "../types/market.js";
 import type { RelicDatabase } from "../types/relics.js";
-import { getCachedPriceState } from "./wfm/priceCache.js";
 import { getCachedWfmItemMeta, resolveSnapshotSetSlug } from "./wfm/wfmItemMeta.js";
-import { getCachedRankOrderSummary } from "../stores/hydration/hydrationCacheHelpers.js";
-import { resolvePriceRank } from "../stores/hydration/hydrationHelpers.js";
-import { normalizeLooseMarketName, normalizeMarketName, toMarketSlug } from "./marketNaming.js";
 import {
-  toFinitePositiveInt,
-  toFiniteNumber,
-  isRankedGroup,
-  resolveRankedMaxRank,
-} from "../../config/shared/numeric.js";
+  readRowPrices,
+  type RowFields,
+  type RowPriceState,
+} from "../stores/hydration/rowPriceState.js";
+import { normalizeLooseMarketName, normalizeMarketName, toMarketSlug } from "./marketNaming.js";
+import { toFinitePositiveInt, isRankedGroup } from "../../config/shared/numeric.js";
 import { formatWfmAssetUrl, sanitizeWfmSlug } from "../../config/shared/wfm.js";
-import { rendererPriceCacheKey } from "../../config/shared/wfmCacheKeys.js";
 import { isExcludedRankedMarketItem } from "../../config/shared/wfmExclusions.js";
 import { sanitizeDisplayName } from "../../config/shared/displayName.js";
 
@@ -64,35 +60,6 @@ export interface InventoryViewItem extends InventoryBaseItem {
   displayImageUrl: string | null;
   usesFallbackArt: boolean;
   equippedSummary: string | null;
-}
-
-export interface ItemMetrics {
-  platinum: number | null;
-  platinumR0?: number | null;
-  platinumRmax?: number | null;
-  hasPriceR0?: boolean;
-  hasPriceRmax?: boolean;
-  wtsR0?: number | null;
-  wtbR0?: number | null;
-  wtsRmax?: number | null;
-  wtbRmax?: number | null;
-  hasOrdersR0?: boolean;
-  hasOrdersRmax?: boolean;
-  priceRank?: number | null;
-  ducats: number | null;
-  slug: string | null;
-  thumb: string | null;
-  icon: string | null;
-  hasPrice: boolean;
-  hasDucats: boolean;
-  hasMeta: boolean;
-}
-
-export interface MetricNeeds {
-  price: boolean;
-  ducats: boolean;
-  orders: boolean;
-  network?: boolean;
 }
 
 export const INVENTORY_FILTERS: Array<{ key: InventoryFilterTab; labelKey: MessageKey }> = [
@@ -163,23 +130,6 @@ function lookupNameCandidates(itemName: string): string[] {
   }
 
   return [...candidates];
-}
-
-function resolveCachedPlatinum(item: InventoryBaseItem): number | null {
-  if (!item.marketSlug) return null;
-
-  const rank = resolvePriceRank(item);
-  const cacheKey = rendererPriceCacheKey(item.marketSlug, rank);
-  const entry = getCachedPriceState(cacheKey);
-  if (!entry || entry.status !== "ok") return null;
-  return toFiniteNumber(entry.median);
-}
-
-function resolveCachedRankPlatinum(slug: string | null | undefined, rank: number): number | null {
-  if (!slug) return null;
-  const entry = getCachedPriceState(rendererPriceCacheKey(slug, rank));
-  if (!entry || entry.status !== "ok") return null;
-  return toFiniteNumber(entry.median);
 }
 
 function isSetSlug(slug: string | null | undefined): boolean {
@@ -291,12 +241,11 @@ export function shouldHydrateMetrics(item: ParsedItem): boolean {
 export function metricNeedsFromFilters(
   filters: SharedFiltersState,
   activeTab: InventoryFilterTab,
-): MetricNeeds {
+): RowFields {
   const needsDucatsForTab =
     activeTab === "all_parts" || activeTab === "full_sets" || activeTab === "everything";
   const needsOrdersForTab = isRankedGroup(activeTab) || activeTab === "everything";
   return {
-    price: true,
     ducats: needsDucatsForTab || filters.sortBy === "ducats" || filters.sortBy === "ducatonator",
     orders: needsOrdersForTab,
   };
@@ -501,60 +450,18 @@ export function buildBaseInventoryItems(
 
 export function buildInventoryViewItems<T extends InventoryBaseItem>(
   baseItems: T[],
-  metricsByKey: Record<string, ItemMetrics>,
+  rowsByKey: Record<string, RowPriceState>,
 ): (T & InventoryViewItem)[] {
   return baseItems.map<T & InventoryViewItem>((item) => {
-    const metric = metricsByKey[item.internalName] || null;
+    const prices = readRowPrices(rowsByKey[item.internalName], item);
     const isRankedListingItem = isRankedGroup(item.inventoryGroup);
-    const itemMaxRank =
-      toFinitePositiveInt(item.maxRank) ?? resolveRankedMaxRank(item.inventoryGroup);
-    const itemCurrentRank = toFinitePositiveInt(item.rank) ?? 0;
-
-    const metricPlatinumR0Raw = metric?.platinumR0 ?? null;
-    const metricPlatinumR0Value = toFiniteNumber(metricPlatinumR0Raw);
-    const metricPlatinumRmaxRaw = metric?.platinumRmax ?? null;
-    const metricPlatinumRmaxValue = toFiniteNumber(metricPlatinumRmaxRaw);
-
-    const cachedPlatinumR0 = isRankedListingItem
-      ? resolveCachedRankPlatinum(item.marketSlug, 0)
-      : null;
-    const cachedPlatinumRmax = isRankedListingItem
-      ? resolveCachedRankPlatinum(item.marketSlug, itemMaxRank)
-      : null;
-    const metricPlatinumR0 = metricPlatinumR0Value ?? cachedPlatinumR0;
-    const metricPlatinumRmax = metricPlatinumRmaxValue ?? cachedPlatinumRmax;
-
-    const metricWtsR0Raw = metric?.wtsR0 ?? null;
-    const metricWtbR0Raw = metric?.wtbR0 ?? null;
-    const metricWtsRmaxRaw = metric?.wtsRmax ?? null;
-    const metricWtbRmaxRaw = metric?.wtbRmax ?? null;
-
-    const metricWtsR0 = toFiniteNumber(metricWtsR0Raw);
-    const metricWtbR0 = toFiniteNumber(metricWtbR0Raw);
-    const metricWtsRmax = toFiniteNumber(metricWtsRmaxRaw);
-    const metricWtbRmax = toFiniteNumber(metricWtbRmaxRaw);
-
-    const cachedOrdersR0 = isRankedListingItem
-      ? getCachedRankOrderSummary(item.marketSlug, 0)
-      : null;
-    const cachedOrdersRmax = isRankedListingItem
-      ? getCachedRankOrderSummary(item.marketSlug, itemMaxRank)
-      : null;
-
-    const selectedRankPlatinum =
-      isRankedListingItem && itemCurrentRank >= itemMaxRank ? metricPlatinumRmax : metricPlatinumR0;
-
-    const platinumRaw = metric?.platinum ?? null;
-    const platinumFromMetrics = toFiniteNumber(platinumRaw);
-    const platinum = platinumFromMetrics ?? selectedRankPlatinum ?? resolveCachedPlatinum(item);
-    const ducatsRaw = item.ducats ?? metric?.ducats ?? null;
-    const ducats = toFiniteNumber(ducatsRaw);
+    const { platinum, ducats } = prices;
     const ducatonator =
       ducats != null && platinum != null && platinum > 0
         ? Number((ducats / platinum).toFixed(2))
         : null;
 
-    const iconFromMeta = formatWfmAssetUrl(metric?.thumb || metric?.icon || null);
+    const iconFromMeta = formatWfmAssetUrl(prices.thumb || prices.icon || null);
     // For mods and arcanes the WFM thumb beats DE's flat icon, but the framed
     // wiki card beats both, so cardArt wins wherever it exists.
     const displayImageUrl =
@@ -573,12 +480,12 @@ export function buildInventoryViewItems<T extends InventoryBaseItem>(
     return {
       ...item,
       platinum,
-      platinumR0: isRankedListingItem ? metricPlatinumR0 : null,
-      platinumRmax: isRankedListingItem ? metricPlatinumRmax : null,
-      wtsR0: isRankedListingItem ? (metricWtsR0 ?? cachedOrdersR0?.wts ?? null) : null,
-      wtbR0: isRankedListingItem ? (metricWtbR0 ?? cachedOrdersR0?.wtb ?? null) : null,
-      wtsRmax: isRankedListingItem ? (metricWtsRmax ?? cachedOrdersRmax?.wts ?? null) : null,
-      wtbRmax: isRankedListingItem ? (metricWtbRmax ?? cachedOrdersRmax?.wtb ?? null) : null,
+      platinumR0: prices.platinumR0,
+      platinumRmax: prices.platinumRmax,
+      wtsR0: prices.wtsR0,
+      wtbR0: prices.wtbR0,
+      wtsRmax: prices.wtsRmax,
+      wtbRmax: prices.wtbRmax,
       ducats,
       ducatonator,
       displayImageUrl,

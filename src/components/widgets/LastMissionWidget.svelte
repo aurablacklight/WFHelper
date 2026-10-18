@@ -13,7 +13,7 @@
   } from "../../lib/missionRewardRows.js";
   import { currentView } from "../../stores/app.js";
   import { itemDb, wfmItems } from "../../stores/data.js";
-  import { getCachedMedian } from "../../stores/hydration/hydrationCacheHelpers.js";
+  import { getCachedMedian } from "../../lib/wfm/priceCache.js";
   import { priceCacheRevision } from "../../stores/pricing.js";
   import { relicDb } from "../../stores/relics.js";
   import type { MissionRewardsPayload } from "../../types/ipc.js";

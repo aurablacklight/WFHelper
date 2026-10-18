@@ -176,7 +176,7 @@
 
   const marketFilters = sharedFilters("market");
   const hydration = getInventoryHydrationController();
-  const hydrationMetrics = hydration.metricsByKey;
+  const hydrationRows = hydration.rowsByKey;
 
   function isOrdersTab(tab: MarketTab): tab is "sell" | "buy" {
     return tab === "sell" || tab === "buy";
@@ -960,7 +960,7 @@
   $: marketOrderBaseItems = filteredOrderRows.map((order) =>
     buildMarketOrderInventoryItem(order, $parsedItems, $wfmItems),
   );
-  $: marketOrderViewItems = buildInventoryViewItems(marketOrderBaseItems, $hydrationMetrics);
+  $: marketOrderViewItems = buildInventoryViewItems(marketOrderBaseItems, $hydrationRows);
   $: marketOrderItemsByOrderId = new Map(
     marketOrderViewItems.map((item) => [item.sourceOrderId, item]),
   );
@@ -974,10 +974,9 @@
     marketOrderBaseItems.length > 0
   ) {
     hydration.enqueue(marketOrderBaseItems.slice(0, MARKET_METRIC_PREFETCH_LIMIT), $wfmItems, {
-      price: true,
+      mode: "visible",
       ducats: false,
       orders: true,
-      network: true,
     });
   }
 </script>

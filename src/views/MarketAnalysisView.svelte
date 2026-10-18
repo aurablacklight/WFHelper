@@ -110,7 +110,7 @@
   import { buildParsedItemFromDb } from "../lib/parsedItemFromDb.js";
   import { persistedBoolean } from "../lib/persistence.js";
   import { priceCacheRevision } from "../stores/pricing.js";
-  import { getCachedMedian } from "../stores/hydration/hydrationCacheHelpers.js";
+  import { getCachedMedian } from "../lib/wfm/priceCache.js";
   import {
     type LedgerErrorCode,
     type LedgerEventPatch,

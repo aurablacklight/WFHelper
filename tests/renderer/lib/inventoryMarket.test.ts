@@ -10,8 +10,12 @@ import {
   metricNeedsFromFilters,
   shouldHydrateMetrics,
   type InventoryBaseItem,
-  type ItemMetrics,
 } from "../../../src/lib/inventoryMarket.js";
+import {
+  emptyRowState,
+  fieldOk,
+  type RowPriceState,
+} from "../../../src/stores/hydration/rowPriceState.js";
 import type { WfmOrder } from "../../../src/types/market.js";
 import type { WfmItemsLookup } from "../../../src/types/ipc.js";
 import type { ItemDbEntry } from "../../../src/types/inventory.js";
@@ -231,17 +235,13 @@ describe("inventoryMarket view mapping", () => {
 
   it("prefers market/thumb metadata for mods and arcanes", () => {
     const item = makeBaseItem();
-    const metrics: Record<string, ItemMetrics> = {
-      [item.internalName]: {
+    const metrics: Record<string, RowPriceState> = {
+      [item.internalName]: rowWith("sample_item", {
         platinum: 20,
         ducats: 45,
-        slug: "sample_item",
         thumb: "https://warframe.market/static/assets/sample_meta_thumb.png",
         icon: "https://warframe.market/static/assets/sample_meta_icon.png",
-        hasPrice: true,
-        hasDucats: true,
-        hasMeta: true,
-      },
+      }),
     };
 
     const [mapped] = buildInventoryViewItems([item], metrics);
@@ -253,17 +253,10 @@ describe("inventoryMarket view mapping", () => {
 
   it("falls back to market thumb/meta icon when local icon is missing", () => {
     const item = makeBaseItem({ imageUrl: null, marketThumb: null });
-    const metrics: Record<string, ItemMetrics> = {
-      [item.internalName]: {
-        platinum: null,
-        ducats: null,
-        slug: "sample_item",
-        thumb: null,
+    const metrics: Record<string, RowPriceState> = {
+      [item.internalName]: rowWith("sample_item", {
         icon: "https://warframe.market/static/assets/sample_meta_icon.png",
-        hasPrice: true,
-        hasDucats: true,
-        hasMeta: true,
-      },
+      }),
     };
 
     const [mapped] = buildInventoryViewItems([item], metrics);
@@ -275,17 +268,8 @@ describe("inventoryMarket view mapping", () => {
 
   it("falls back to local item icon when market sources are unavailable", () => {
     const item = makeBaseItem({ marketThumb: null });
-    const metrics: Record<string, ItemMetrics> = {
-      [item.internalName]: {
-        platinum: null,
-        ducats: null,
-        slug: "sample_item",
-        thumb: null,
-        icon: null,
-        hasPrice: true,
-        hasDucats: true,
-        hasMeta: true,
-      },
+    const metrics: Record<string, RowPriceState> = {
+      [item.internalName]: rowWith("sample_item", { thumb: null, icon: null }),
     };
 
     const [mapped] = buildInventoryViewItems([item], metrics);
@@ -430,7 +414,6 @@ describe("inventoryMarket view mapping", () => {
       "all_parts",
     );
 
-    expect(needs.price).toBe(true);
     expect(needs.ducats).toBe(true);
   });
 
@@ -757,17 +740,8 @@ describe("inventoryMarket view mapping", () => {
       ducats: Number.NaN,
     });
 
-    const metrics: Record<string, ItemMetrics> = {
-      [item.internalName]: {
-        platinum: Number.NaN,
-        ducats: Number.NaN,
-        slug: "sample_item",
-        thumb: null,
-        icon: null,
-        hasPrice: true,
-        hasDucats: true,
-        hasMeta: true,
-      },
+    const metrics: Record<string, RowPriceState> = {
+      [item.internalName]: rowWith("sample_item", { platinum: Number.NaN, ducats: Number.NaN }),
     };
 
     const [mapped] = buildInventoryViewItems([item], metrics);
@@ -835,21 +809,8 @@ describe("inventoryMarket view mapping", () => {
       maxRank: 10,
     });
 
-    const metrics: Record<string, ItemMetrics> = {
-      [item.internalName]: {
-        platinum: null,
-        platinumR0: 7,
-        platinumRmax: 76,
-        hasPriceR0: true,
-        hasPriceRmax: true,
-        ducats: null,
-        slug: "critical_delay",
-        thumb: null,
-        icon: null,
-        hasPrice: true,
-        hasDucats: true,
-        hasMeta: true,
-      },
+    const metrics: Record<string, RowPriceState> = {
+      [item.internalName]: rowWith("critical_delay", { platinumR0: 7, platinumRmax: 76 }),
     };
 
     const [mapped] = buildInventoryViewItems([item], metrics);
@@ -1080,3 +1041,33 @@ describe("everything tab", () => {
     expect(EVERYTHING_DEFAULT_SOURCES.length).toBe(EVERYTHING_SOURCES.length - 1);
   });
 });
+
+/** A hydrated row holding just the given values; everything else stays untried. */
+function rowWith(
+  slug: string,
+  values: {
+    platinum?: number | null;
+    platinumR0?: number | null;
+    platinumRmax?: number | null;
+    ducats?: number | null;
+    thumb?: string | null;
+    icon?: string | null;
+  },
+): RowPriceState {
+  const base = emptyRowState(slug);
+  const at = Date.now();
+  const hasIcon = values.thumb !== undefined || values.icon !== undefined;
+  return {
+    ...base,
+    price:
+      values.platinum !== undefined ? { ...fieldOk(values.platinum, at), rank: null } : base.price,
+    priceR0: values.platinumR0 !== undefined ? fieldOk(values.platinumR0, at) : base.priceR0,
+    priceRmax:
+      values.platinumRmax !== undefined ? fieldOk(values.platinumRmax, at) : base.priceRmax,
+    ducats:
+      values.ducats !== undefined ? { ...fieldOk(values.ducats, at), attempts: 0 } : base.ducats,
+    icon: hasIcon
+      ? fieldOk({ thumb: values.thumb ?? null, icon: values.icon ?? null }, at)
+      : base.icon,
+  };
+}
