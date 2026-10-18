@@ -2,7 +2,7 @@ import path from "node:path";
 import { BrowserWindow, app, screen, shell } from "electron";
 import { getOverlayDescriptor } from "../config/shared/overlayLayout";
 import ctx from "./context";
-import { assertRivenOverlayRendererSender, onAuthorized } from "./ipcSecurity";
+
 import { createOverlayWindowsController } from "./overlay/windows";
 import {
   overlayWindow,
@@ -49,18 +49,19 @@ import { isAllowedExternalHost } from "../config/runtime/security";
 import {
   OVERLAY_INTERACTION_MODE,
   OVERLAY_THEME_VARS,
-  RIVEN_OVERLAY_CLOSE,
-  RIVEN_OPEN_AUCTION,
   RIVEN_GRADING_INITIAL,
   RIVEN_GRADING_ROLL,
   RIVEN_BEST_ATTRIBUTES,
   RIVEN_SIMILAR_LISTINGS,
   RIVEN_SIMILAR_AUCTIONS,
   RIVEN_WEAPON_UPDATE,
-  RIVEN_RESCAN_REQUEST,
   RIVEN_RESCAN,
   RIVEN_WEAPON_MISSING,
 } from "../config/shared/ipcChannels";
+import { listen } from "./routeHandlers";
+import { overlayRoutes } from "../config/shared/overlayIpcRoutes";
+
+const { rivenOverlay } = overlayRoutes;
 
 const log = withScope("rivenOverlayIpc");
 
@@ -862,7 +863,7 @@ export function onRivenChoiceConfirmed(): void {
 export { setRivenInteractiveMode };
 
 export function register(): void {
-  onAuthorized(RIVEN_OVERLAY_CLOSE, assertRivenOverlayRendererSender, () => {
+  listen(rivenOverlay.close, () => {
     rollScanGeneration.invalidate();
     _rivenSessionToken += 1;
     rivenScan.abortRivenScans();
@@ -876,23 +877,19 @@ export function register(): void {
     rivenLastEvents.clear();
   });
 
-  onAuthorized(RIVEN_RESCAN_REQUEST, assertRivenOverlayRendererSender, () => {
+  listen(rivenOverlay.requestRescan, () => {
     if (!isAnyRivenWindowVisible()) return;
     log.info("[OverlayRoute] trigger=riven-manual-rescan");
     rescanVisibleRivenCard();
   });
 
-  onAuthorized(
-    RIVEN_OPEN_AUCTION,
-    assertRivenOverlayRendererSender,
-    (_event, auctionId: unknown) => {
-      const id = String(auctionId || "").replace(/[^a-zA-Z0-9]/g, "");
-      if (id) {
-        const url = new URL(`https://warframe.market/auction/${id}`);
-        if (url.protocol === "https:" && isAllowedExternalHost(url.hostname)) {
-          void shell.openExternal(url.toString());
-        }
+  listen(rivenOverlay.openAuction, (_event, auctionId: unknown) => {
+    const id = String(auctionId || "").replace(/[^a-zA-Z0-9]/g, "");
+    if (id) {
+      const url = new URL(`https://warframe.market/auction/${id}`);
+      if (url.protocol === "https:" && isAllowedExternalHost(url.hostname)) {
+        void shell.openExternal(url.toString());
       }
-    },
-  );
+    }
+  });
 }

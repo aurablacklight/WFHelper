@@ -15,7 +15,7 @@
   import { overlayOpacityCssVar } from "../../config/shared/themeCssVars.js";
   import { tr } from "../lib/i18n.js";
   import type { MessageKey } from "../lib/i18n.js";
-  import type { IpcInvokeMap } from "../types/ipc.js";
+  import type { IpcInvokeMap } from "../../config/shared/ipcRoutes.js";
   import { invoke, on } from "../lib/ipc.js";
   import { themeSettings } from "../stores/theme.js";
   import ModalShell from "./ModalShell.svelte";

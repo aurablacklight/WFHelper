@@ -1,4 +1,3 @@
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
 import ctx from "./context";
 import * as gunBuildAdvisor from "../services/buildAdvisor/gunBuildAdvisor";
 import {
@@ -7,7 +6,11 @@ import {
   type GunBuildReview,
 } from "../config/shared/buildAdvisorTypes";
 import { toNonEmptyString } from "../config/shared/stringValidation";
-import { BUILD_ADVISOR_GUNS, BUILD_ADVISOR_REVIEW } from "../config/shared/ipcChannels";
+
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 const NOT_OWNED: GunBuildReview = {
   advice: { ok: false, reason: "weapon-not-owned" },
@@ -19,13 +22,12 @@ function knownFaction(value: unknown): AdvisorFaction | null {
 }
 
 function register(): void {
-  handleAuthorized(BUILD_ADVISOR_GUNS, assertMainRendererSender, () =>
+  handle(api.getBuildAdvisorGuns, () =>
     ctx.currentInventoryData ? gunBuildAdvisor.listOwnedGuns(ctx.currentInventoryData) : [],
   );
 
-  handleAuthorized(
-    BUILD_ADVISOR_REVIEW,
-    assertMainRendererSender,
+  handle(
+    api.reviewGunBuild,
     (
       _event,
       weaponType: unknown,

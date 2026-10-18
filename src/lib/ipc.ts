@@ -1,22 +1,25 @@
-import type { IpcEventMap, IpcInvokeMap, IpcSendMap } from "../types/ipc.js";
-import type { RelicOverlayFilterPush } from "../../config/shared/relicPlannerView.js";
+import {
+  mainWindowRoutes,
+  type ApiRoutes,
+  type IpcInvokeMap,
+  type TradeApiRoutes,
+} from "../../config/shared/ipcRoutes.js";
+import type {
+  EventArgs,
+  EventNames,
+  InvokeNames,
+  SendArgs,
+  SendNames,
+} from "../../config/shared/ipcRoute.js";
 import type { Translator } from "./i18n.js";
 
-type InvokeKey = keyof IpcInvokeMap;
-type TradeInvokeKey =
-  | "wfmCreateOrder"
-  | "wfmUpdateOrder"
-  | "wfmDeleteOrder"
-  | "wfmCloseOrder"
-  | "wfmSetVisible"
-  | "wfmSetStatus"
-  | "createRivenAuction"
-  | "updateRivenAuction"
-  | "deleteRivenAuction"
-  | "workbenchExecutePlan";
-type ReadOnlyInvokeKey = Exclude<InvokeKey, TradeInvokeKey>;
-type EventChannel = keyof IpcEventMap;
-type SendChannel = keyof IpcSendMap;
+type ReadOnlyInvokeKey = InvokeNames<ApiRoutes>;
+type TradeInvokeKey = InvokeNames<TradeApiRoutes>;
+
+type ChannelOf<K extends keyof ApiRoutes> = ApiRoutes[K]["channel"];
+type EventChannel = ChannelOf<EventNames<ApiRoutes>>;
+type SendChannel = ChannelOf<SendNames<ApiRoutes>>;
+type RouteOn<C, Names extends keyof ApiRoutes> = Extract<ApiRoutes[Names], { channel: C }>;
 
 function assertApi(): void {
   if (!window.api) {
@@ -73,87 +76,38 @@ export function tradeInvoke<K extends TradeInvokeKey>(
   return fn(...args);
 }
 
-const eventApiMap: Record<
-  EventChannel,
-  (cb: (payload: IpcEventMap[EventChannel]) => void) => () => void
-> = {
-  "overlay-edit-state": (cb) =>
-    window.api.onOverlayEditState(cb as (state: IpcEventMap["overlay-edit-state"]) => void),
-  "inventory-updated": (cb) =>
-    window.api.onInventoryUpdated(cb as (data: IpcEventMap["inventory-updated"]) => void),
-  "profile-account-changed": (cb) => window.api.onProfileAccountChanged(cb as () => void),
-  "inventory-status-updated": (cb) =>
-    window.api.onInventoryStatusUpdated(
-      cb as (status: IpcEventMap["inventory-status-updated"]) => void,
-    ),
-  "item-db-updated": (cb) =>
-    window.api.onItemDbUpdated(cb as (data: IpcEventMap["item-db-updated"]) => void),
-  "relic-db-updated": (cb) =>
-    window.api.onRelicDbUpdated(cb as (data: IpcEventMap["relic-db-updated"]) => void),
-  "app-update-status": (cb) =>
-    window.api.onAppUpdateStatus(cb as (state: IpcEventMap["app-update-status"]) => void),
-  "wfm:notification": (cb) =>
-    window.api.onWfmNotification(cb as (n: IpcEventMap["wfm:notification"]) => void),
-  "helper-download-progress": (cb) =>
-    window.api.onHelperDownloadProgress(cb as (p: IpcEventMap["helper-download-progress"]) => void),
-  "trade-recorded": (cb) =>
-    window.api.onTradeRecorded(cb as (e: IpcEventMap["trade-recorded"]) => void),
-  "world-state-fetch-error": (cb) =>
-    window.api.onWorldStateFetchError(cb as (m: IpcEventMap["world-state-fetch-error"]) => void),
-  "arbi-run-saved": (cb) =>
-    window.api.onArbiRunSaved(cb as (run: IpcEventMap["arbi-run-saved"]) => void),
-  "arbi-open-run": (cb) =>
-    window.api.onArbiOpenRun(cb as (runId: IpcEventMap["arbi-open-run"]) => void),
-  "pt-run-saved": (cb) => window.api.onPtRunSaved(cb as (run: IpcEventMap["pt-run-saved"]) => void),
-  "mission-rewards-updated": (cb) =>
-    window.api.onMissionRewardsUpdated(
-      cb as (payload: IpcEventMap["mission-rewards-updated"]) => void,
-    ),
-  "warframe-ui-scale-updated": (cb) =>
-    window.api.onWarframeUiScaleUpdated(
-      cb as (scale: IpcEventMap["warframe-ui-scale-updated"]) => void,
-    ),
-  "riven-similar-auctions": (cb) =>
-    window.api.onRivenSimilarAuctions(cb as (shown: IpcEventMap["riven-similar-auctions"]) => void),
-  "notification-history-added": (cb) =>
-    window.api.onNotificationHistoryAdded(
-      cb as (entry: IpcEventMap["notification-history-added"]) => void,
-    ),
-  "market-alerts:changed": (cb) =>
-    window.api.onMarketAlertsChanged(cb as (data: IpcEventMap["market-alerts:changed"]) => void),
-  "notification-sound-play": (cb) =>
-    window.api.onNotificationSoundPlay(
-      cb as (payload: IpcEventMap["notification-sound-play"]) => void,
-    ),
-  "workbench-state": (cb) =>
-    window.api.onWorkbenchState(cb as (state: IpcEventMap["workbench-state"]) => void),
-  "popout-state-changed": (cb) =>
-    window.api.onPopoutStateChanged(cb as (w: IpcEventMap["popout-state-changed"]) => void),
-};
-
-export function on<K extends EventChannel>(
-  channel: K,
-  callback: (payload: IpcEventMap[K]) => void,
-): () => void {
-  return (eventApiMap[channel] as (cb: (payload: IpcEventMap[EventChannel]) => void) => () => void)(
-    callback as (payload: IpcEventMap[EventChannel]) => void,
+// on() and send() take the channel name; the preload exposes each under its method name.
+// One map per kind, so an event and a send on the same channel cannot shadow each other.
+function methodsByChannel(kind: "event" | "send"): Map<string, keyof ApiRoutes> {
+  const names = Object.keys(mainWindowRoutes.api) as (keyof ApiRoutes)[];
+  return new Map(
+    names
+      .filter((name) => mainWindowRoutes.api[name].kind === kind)
+      .map((name) => [mainWindowRoutes.api[name].channel, name]),
   );
 }
+const eventMethods = methodsByChannel("event");
+const sendMethods = methodsByChannel("send");
 
-const sendApiMap: Record<SendChannel, (...args: never[]) => void> = {
-  "window-minimize": () => window.api.minimizeWindow(),
-  "window-maximize": () => window.api.maximizeWindow(),
-  "window-close": () => window.api.closeWindow(),
-  "toggle-overlay": () => window.api.toggleOverlay(),
-  "simulate-relic-trigger": () => window.api.simulateRelicTrigger(),
-  "overlay-theme-updated": (themeVars: Record<string, string>) =>
-    window.api.updateOverlayTheme(themeVars),
-  "game-locale-updated": (locale: string) => window.api.updateGameLocale(locale),
-  "overlay:push-relic-filters": (filters: RelicOverlayFilterPush) =>
-    window.api.pushRelicFilters(filters),
-  "open-external": (url: string) => window.api.openExternal(url),
-};
+function bridgedByChannel(
+  methods: Map<string, keyof ApiRoutes>,
+  channel: string,
+): (...args: unknown[]) => unknown {
+  const name = methods.get(channel);
+  if (!name) throw new Error(`No preload method for IPC channel "${channel}"`);
+  return window.api[name] as (...args: unknown[]) => unknown;
+}
 
-export function send<K extends SendChannel>(channel: K, ...args: IpcSendMap[K]): void {
-  (sendApiMap[channel] as (...a: IpcSendMap[K]) => void)(...args);
+export function on<C extends EventChannel>(
+  channel: C,
+  callback: (...payload: EventArgs<RouteOn<C, EventNames<ApiRoutes>>>) => void,
+): () => void {
+  return bridgedByChannel(eventMethods, channel)(callback) as () => void;
+}
+
+export function send<C extends SendChannel>(
+  channel: C,
+  ...args: SendArgs<RouteOn<C, SendNames<ApiRoutes>>>
+): void {
+  bridgedByChannel(sendMethods, channel)(...args);
 }

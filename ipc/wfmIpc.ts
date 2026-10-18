@@ -1,4 +1,3 @@
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
 import { isObject } from "./ipcValidators";
 import { toNonEmptyString } from "../config/shared/stringValidation";
 import type { WfmStatus } from "../config/shared/wfm";
@@ -26,26 +25,12 @@ import * as marketStatsHistory from "../services/marketStatsHistory";
 import * as wfmPresence from "../services/wfmPresence";
 import { startListening, stopListening } from "../services/wfmWebSocketListener";
 import ctx from "./context";
-import {
-  WFM_SIGNIN,
-  WFM_SIGNOUT,
-  WFM_SESSION,
-  WFM_GET_ORDERS,
-  WFM_GET_CONTRACTS,
-  WFM_CREATE_ORDER,
-  WFM_UPDATE_ORDER,
-  WFM_DELETE_ORDER,
-  WFM_CLOSE_ORDER,
-  WFM_SET_VISIBLE,
-  WFM_SEARCH_ITEMS,
-  WFM_LOOKUP_ITEM,
-  MARKET_STATS_HISTORY_MERGE,
-  WFM_GET_ME,
-  WFM_SET_STATUS,
-  WFM_PRESENCE_STATE,
-  WFM_NOTIFICATION,
-} from "../config/shared/ipcChannels";
+import { WFM_NOTIFICATION } from "../config/shared/ipcChannels";
 import { registerWfmFixtures } from "./wfmFixtureIpc";
+import { handle, type Answer } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api, tradeApi } = mainWindowRoutes;
 
 const log = withScope("wfmIpc");
 
@@ -127,11 +112,12 @@ function _handleWfmAuthGiveUp(): void {
 function register(): void {
   if (registerWfmFixtures()) return; // E2E-only stub replaced the whole surface
 
-  handleAuthorized(WFM_SIGNIN, assertMainRendererSender, async (_event, payload) => {
+  // Known drift: a failed sign-in answers without the userName and platform WfmSession promises.
+  handle(api.wfmSignIn, async (_event, payload) => {
     const creds = parseCredentials(payload);
     if (!creds) {
       log.warn("[Security] wfm:signin blocked due to invalid payload shape");
-      return { loggedIn: false, error: "Invalid sign-in payload." };
+      return { loggedIn: false, error: "Invalid sign-in payload." } as Answer<"wfmSignIn">;
     }
 
     try {
@@ -139,34 +125,33 @@ function register(): void {
       _startSessionServices();
       return result;
     } catch (err) {
-      return { loggedIn: false, error: normalizeErrorMessage(err, "Sign-in failed.") };
+      return {
+        loggedIn: false,
+        error: normalizeErrorMessage(err, "Sign-in failed."),
+      } as Answer<"wfmSignIn">;
     }
   });
 
-  handleAuthorized(WFM_SIGNOUT, assertMainRendererSender, async () => {
+  handle(api.wfmSignOut, async () => {
     stopListening();
     wfmPresence.reset();
     return wfmSession.signOut();
   });
 
-  handleAuthorized(WFM_SESSION, assertMainRendererSender, async () => {
+  handle(api.wfmGetSession, async () => {
     return wfmSession.getSession();
   });
 
-  handleAuthorized(
-    MARKET_STATS_HISTORY_MERGE,
-    assertMainRendererSender,
-    async (_event, payload) => {
-      const raw = isObject(payload) ? payload : null;
-      return marketStatsHistory.mergeMarketStatsHistory(raw?.slug, raw?.points, raw?.mode);
-    },
-  );
+  handle(api.marketStatsHistoryMerge, async (_event, payload) => {
+    const raw = isObject(payload) ? payload : null;
+    return marketStatsHistory.mergeMarketStatsHistory(raw?.slug, raw?.points, raw?.mode);
+  });
 
-  handleAuthorized(WFM_GET_ORDERS, assertMainRendererSender, async () =>
+  handle(api.wfmGetOrders, async () =>
     withWfmError("get-orders", () => wfmOrders.getMyOrders(), "Failed to fetch orders."),
   );
 
-  handleAuthorized(WFM_GET_CONTRACTS, assertMainRendererSender, async (_event, payload) => {
+  handle(api.wfmGetContracts, async (_event, payload) => {
     const parsed = parseContractsPayload(payload);
     if (!parsed) {
       log.warn("[Security] wfm:get-contracts blocked due to invalid payload");
@@ -179,7 +164,7 @@ function register(): void {
     );
   });
 
-  handleAuthorized(WFM_CREATE_ORDER, assertMainRendererSender, async (_event, payload) => {
+  handle(tradeApi.wfmCreateOrder, async (_event, payload) => {
     const params = parseCreateOrderParams(payload);
     if (!params) {
       log.warn("[Security] wfm:create-order blocked due to invalid payload");
@@ -206,7 +191,7 @@ function register(): void {
     );
   });
 
-  handleAuthorized(WFM_UPDATE_ORDER, assertMainRendererSender, async (_event, payload) => {
+  handle(tradeApi.wfmUpdateOrder, async (_event, payload) => {
     const parsed = parseUpdateOrderPayload(payload);
     if (!parsed) {
       log.warn("[Security] wfm:update-order blocked due to invalid payload");
@@ -219,7 +204,7 @@ function register(): void {
     );
   });
 
-  handleAuthorized(WFM_DELETE_ORDER, assertMainRendererSender, async (_event, payload) => {
+  handle(tradeApi.wfmDeleteOrder, async (_event, payload) => {
     const parsed = parseOrderIdPayload(payload);
     if (!parsed) {
       log.warn("[Security] wfm:delete-order blocked due to invalid payload");
@@ -232,7 +217,7 @@ function register(): void {
     );
   });
 
-  handleAuthorized(WFM_CLOSE_ORDER, assertMainRendererSender, async (_event, payload) => {
+  handle(tradeApi.wfmCloseOrder, async (_event, payload) => {
     const parsed = parseCloseOrderPayload(payload);
     if (!parsed) {
       log.warn("[Security] wfm:close-order blocked due to invalid payload");
@@ -249,7 +234,7 @@ function register(): void {
     );
   });
 
-  handleAuthorized(WFM_SET_VISIBLE, assertMainRendererSender, async (_event, payload) => {
+  handle(tradeApi.wfmSetVisible, async (_event, payload) => {
     const parsed = parseSetVisiblePayload(payload);
     if (!parsed) {
       log.warn("[Security] wfm:set-visible blocked due to invalid payload");
@@ -262,20 +247,25 @@ function register(): void {
     );
   });
 
-  handleAuthorized(WFM_SEARCH_ITEMS, assertMainRendererSender, async (_event, payload) => {
+  handle(api.wfmSearchItems, async (_event, payload) => {
     const parsed = parseSearchPayload(payload);
     if (!parsed) {
       log.warn("[Security] wfm:search-items blocked due to invalid payload");
       return { error: "Invalid search payload." };
     }
+    // Known drift: catalog items can carry a null id; WfmSearchItem says string.
     return withWfmError(
       "search-items",
-      () => wfmCatalog.searchItems(parsed.query, parsed.limit),
+      async () =>
+        (await wfmCatalog.searchItems(
+          parsed.query,
+          parsed.limit,
+        )) as unknown as Answer<"wfmSearchItems">,
       "Failed to search items.",
     );
   });
 
-  handleAuthorized(WFM_LOOKUP_ITEM, assertMainRendererSender, async (_event, payload) => {
+  handle(api.wfmLookupItemBySlug, async (_event, payload) => {
     const slugRaw = isObject(payload) ? payload.slug : null;
     const slug = toNonEmptyString(slugRaw, 120)?.toLowerCase() ?? "";
 
@@ -313,11 +303,16 @@ function register(): void {
     }
   });
 
-  handleAuthorized(WFM_GET_ME, assertMainRendererSender, async () =>
-    withWfmError("get-me", () => wfmSession.getMe(), "Failed to get user profile."),
+  // The session service keeps the status as a plain string; the renderer narrows it.
+  handle(api.wfmGetMe, async () =>
+    withWfmError(
+      "get-me",
+      async () => (await wfmSession.getMe()) as Answer<"wfmGetMe">,
+      "Failed to get user profile.",
+    ),
   );
 
-  handleAuthorized(WFM_SET_STATUS, assertMainRendererSender, async (_event, payload) => {
+  handle(tradeApi.wfmSetStatus, async (_event, payload) => {
     const parsed = parseStatusPayload(payload);
     if (!parsed) {
       log.warn("[Security] wfm:set-status blocked due to invalid payload");
@@ -334,9 +329,7 @@ function register(): void {
     );
   });
 
-  handleAuthorized(WFM_PRESENCE_STATE, assertMainRendererSender, async () =>
-    wfmPresence.getState(),
-  );
+  handle(api.wfmPresenceState, async () => wfmPresence.getState());
 }
 
 /** Broadcast presence the main process changed on its own (hold expiry, game launch). */

@@ -1,14 +1,5 @@
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
 import * as notificationChannels from "../services/notificationChannels";
-import {
-  NOTIFICATION_CHANNELS_CLEAR_WEBHOOK,
-  NOTIFICATION_CHANNELS_GET,
-  NOTIFICATION_CHANNELS_SET_DISCORD_PING,
-  NOTIFICATION_CHANNELS_SET_GAME_GATE,
-  NOTIFICATION_CHANNELS_SET_SOURCE,
-  NOTIFICATION_CHANNELS_SET_WEBHOOK,
-  NOTIFICATION_CHANNELS_TEST,
-} from "../config/shared/ipcChannels";
+
 import { isNotificationSource, isWebhookChannel } from "../config/shared/notifications";
 import type {
   NotificationChannelState,
@@ -17,6 +8,10 @@ import type {
   SourceChannelToggles,
   WebhookTestResult,
 } from "../config/shared/notifications";
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 function toToggles(raw: unknown): SourceChannelToggles | null {
   if (!raw || typeof raw !== "object") return null;
@@ -26,13 +21,10 @@ function toToggles(raw: unknown): SourceChannelToggles | null {
 }
 
 function register(): void {
-  handleAuthorized(NOTIFICATION_CHANNELS_GET, assertMainRendererSender, () =>
-    notificationChannels.getChannelState(),
-  );
+  handle(api.getNotificationChannels, () => notificationChannels.getChannelState());
 
-  handleAuthorized(
-    NOTIFICATION_CHANNELS_SET_WEBHOOK,
-    assertMainRendererSender,
+  handle(
+    api.setNotificationWebhook,
     async (_event, channel: unknown, url: unknown): Promise<SetWebhookResult> => {
       if (!isWebhookChannel(channel)) return { ok: false, error: "invalid-url" };
       if (typeof url !== "string") return { ok: false, error: "empty" };
@@ -42,18 +34,16 @@ function register(): void {
 
   // An unusable argument returns the unchanged state so the renderer still
   // repaints from what main actually holds.
-  handleAuthorized(
-    NOTIFICATION_CHANNELS_CLEAR_WEBHOOK,
-    assertMainRendererSender,
+  handle(
+    api.clearNotificationWebhook,
     (_event, channel: unknown): NotificationChannelState =>
       isWebhookChannel(channel)
         ? notificationChannels.clearWebhook(channel)
         : notificationChannels.getChannelState(),
   );
 
-  handleAuthorized(
-    NOTIFICATION_CHANNELS_SET_SOURCE,
-    assertMainRendererSender,
+  handle(
+    api.setNotificationSourceChannels,
     (_event, source: unknown, toggles: unknown): NotificationChannelState => {
       const parsed = toToggles(toggles);
       if (!isNotificationSource(source) || !parsed) return notificationChannels.getChannelState();
@@ -61,27 +51,24 @@ function register(): void {
     },
   );
 
-  handleAuthorized(
-    NOTIFICATION_CHANNELS_SET_GAME_GATE,
-    assertMainRendererSender,
+  handle(
+    api.setNotificationGameGate,
     (_event, enabled: unknown): NotificationChannelState =>
       typeof enabled === "boolean"
         ? notificationChannels.setNativeOnlyWhileGameRunning(enabled)
         : notificationChannels.getChannelState(),
   );
 
-  handleAuthorized(
-    NOTIFICATION_CHANNELS_SET_DISCORD_PING,
-    assertMainRendererSender,
+  handle(
+    api.setNotificationDiscordPing,
     (_event, userId: unknown): SetDiscordPingResult =>
       typeof userId === "string"
         ? notificationChannels.setDiscordPingUserId(userId)
         : { ok: false, error: "invalid-user-id" },
   );
 
-  handleAuthorized(
-    NOTIFICATION_CHANNELS_TEST,
-    assertMainRendererSender,
+  handle(
+    api.testNotificationWebhook,
     async (_event, channel: unknown): Promise<WebhookTestResult> => {
       if (!isWebhookChannel(channel)) return { ok: false, error: "not-configured" };
       return notificationChannels.testWebhook(channel);

@@ -1,13 +1,6 @@
 import { registerOverlayEditor } from "./overlay/editorIpc";
 import ctx from "./context";
-import {
-  assertLocalizedOverlaySender,
-  assertMainRendererSender,
-  assertOverlayRendererSender,
-  assertRivenOverlayRendererSender,
-  handleAuthorized,
-  onAuthorized,
-} from "./ipcSecurity";
+
 import { overlayMessages } from "./overlayI18n";
 import { disposeAppHotkeys, overlayHotkeyBackend } from "./hotkeyRegistry";
 import {
@@ -59,22 +52,7 @@ import {
   type OverlayWindowKey,
 } from "../config/runtime/overlaySettings";
 import { clampNumber } from "../config/shared/numeric";
-import {
-  OVERLAY_THEME_VARS,
-  OVERLAY_GET_SETTINGS,
-  OVERLAY_GET_DETECTED_UI_SCALE,
-  OVERLAY_GET_MESSAGES,
-  OVERLAY_GET_THEME_VARS,
-  OVERLAY_SET_SETTINGS,
-  OVERLAY_THEME_UPDATED,
-  OVERLAY_DRAG_MOVE,
-  OVERLAY_READY,
-  OVERLAY_PLACEMENT_LAYOUT,
-  OVERLAY_SAVE_PLACEMENT,
-  OVERLAY_SAVE_SCALE,
-  RIVEN_SET_SIMILAR_AUCTIONS,
-  RIVEN_SIMILAR_AUCTIONS,
-} from "../config/shared/ipcChannels";
+import { OVERLAY_THEME_VARS, RIVEN_SIMILAR_AUCTIONS } from "../config/shared/ipcChannels";
 import {
   OVERLAY_FORWARDED_COLOR_VARS,
   OVERLAY_FORWARDED_CSS_VARS,
@@ -88,6 +66,12 @@ const log = withScope("overlayIpc");
 
 import { app, BrowserWindow, screen, type WebContents } from "electron";
 import fs from "node:fs";
+import { handle, listen, type Answer } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+import { overlayRoutes } from "../config/shared/overlayIpcRoutes";
+
+const { api } = mainWindowRoutes;
+const { overlay, rivenOverlay } = overlayRoutes;
 
 async function bringOverlayToWarframeDisplayIfAvailable(): Promise<void> {
   try {
@@ -428,67 +412,59 @@ function register(): void {
   rewardOverlayIpc.register(pushOverlayThemeVars);
   arbiOverlayIpc.register();
 
-  handleAuthorized(OVERLAY_GET_SETTINGS, assertMainRendererSender, async () => {
+  handle(api.getOverlaySettings, async () => {
     return { ...ctx.overlaySettings };
   });
 
-  handleAuthorized(OVERLAY_GET_DETECTED_UI_SCALE, assertMainRendererSender, async () => {
+  handle(api.getDetectedWarframeUiScale, async () => {
     return resolveWarframeUiScale();
   });
 
-  handleAuthorized(OVERLAY_GET_THEME_VARS, assertLocalizedOverlaySender, async () => {
+  handle(overlay.getThemeVars, async () => {
     return { ...(ctx.overlayThemeVars || {}) };
   });
 
-  handleAuthorized(OVERLAY_GET_MESSAGES, assertLocalizedOverlaySender, async () => {
+  handle(overlay.getMessages, async () => {
     return overlayMessages();
   });
 
-  onAuthorized(OVERLAY_DRAG_MOVE, assertOverlayRendererSender, (event, rawDelta: unknown) => {
+  listen(overlay.moveBy, (event, rawDelta: unknown) => {
     moveInteractiveOverlayWindow(event.sender, rawDelta);
   });
 
-  onAuthorized(OVERLAY_READY, assertOverlayRendererSender, (event) => {
+  listen(overlay.ready, (event) => {
     const senderId = event.sender.id;
     if (!markOverlayReady(senderId)) {
       log.warn(`[OverlayWindow] ready signal from unknown overlay sender ${senderId}`);
     }
   });
 
-  handleAuthorized(
-    OVERLAY_SET_SETTINGS,
-    assertMainRendererSender,
-    async (_event, nextSettings: unknown) => {
-      const incoming = asRecord(nextSettings) ?? {};
-      const importsLayouts = "rewardLayout" in incoming || "overlayLayouts" in incoming;
-      if (importsLayouts) overlayEditor.assertIdle();
-      const settings = await settingsController.updateOverlaySettings(
-        (current) => {
-          // A new global scale replaces every per-window one.
-          const nextScale = clampNumber(incoming.overlayScale, 0.75, 1.5, NaN);
-          const scaleChanged = Number.isFinite(nextScale) && nextScale !== current.overlayScale;
-          return scaleChanged ? { ...incoming, overlayWindowScales: {} } : incoming;
-        },
-        importsLayouts ? () => overlayEditor.assertIdle() : undefined,
-      );
-      if (importsLayouts) overlayEditor.refresh();
-      return settings;
-    },
-  );
+  handle(api.setOverlaySettings, async (_event, nextSettings: unknown) => {
+    const incoming = asRecord(nextSettings) ?? {};
+    const importsLayouts = "rewardLayout" in incoming || "overlayLayouts" in incoming;
+    if (importsLayouts) overlayEditor.assertIdle();
+    const settings = await settingsController.updateOverlaySettings(
+      (current) => {
+        // A new global scale replaces every per-window one.
+        const nextScale = clampNumber(incoming.overlayScale, 0.75, 1.5, NaN);
+        const scaleChanged = Number.isFinite(nextScale) && nextScale !== current.overlayScale;
+        return scaleChanged ? { ...incoming, overlayWindowScales: {} } : incoming;
+      },
+      importsLayouts ? () => overlayEditor.assertIdle() : undefined,
+    );
+    if (importsLayouts) overlayEditor.refresh();
+    return settings;
+  });
 
-  handleAuthorized(
-    RIVEN_SET_SIMILAR_AUCTIONS,
-    assertRivenOverlayRendererSender,
-    async (_event, shown: unknown) => {
-      if (typeof shown !== "boolean") throw new Error("Similar auctions setting must be a boolean");
-      const settings = await settingsController.updateOverlaySettings({
-        rivenSimilarAuctionsShown: shown,
-      });
-      return settings.rivenSimilarAuctionsShown;
-    },
-  );
+  handle(rivenOverlay.setSimilarAuctions, async (_event, shown: unknown) => {
+    if (typeof shown !== "boolean") throw new Error("Similar auctions setting must be a boolean");
+    const settings = await settingsController.updateOverlaySettings({
+      rivenSimilarAuctionsShown: shown,
+    });
+    return settings.rivenSimilarAuctionsShown;
+  });
 
-  onAuthorized(OVERLAY_THEME_UPDATED, assertMainRendererSender, (_event, rawVars: unknown) => {
+  listen(api.updateOverlayTheme, (_event, rawVars: unknown) => {
     const sanitized = sanitizeOverlayThemeVars(rawVars);
     ctx.overlayThemeVars = sanitized;
     log.info(`[OverlayTheme] updated vars=${Object.keys(sanitized).length}`);
@@ -497,7 +473,7 @@ function register(): void {
     }
   });
 
-  handleAuthorized(OVERLAY_PLACEMENT_LAYOUT, assertMainRendererSender, async () => {
+  handle(api.getOverlayPlacementLayout, async () => {
     const area = screen.getPrimaryDisplay().workArea;
     const rel = (rect: { x: number; y: number; width: number; height: number }) => ({
       x: rect.x - area.x,
@@ -522,74 +498,64 @@ function register(): void {
     };
     return {
       area: { width: area.width, height: area.height },
-      overlays: Object.fromEntries(OVERLAY_KINDS.map((kind) => [kind, placement(kind)])),
+      overlays: Object.fromEntries(
+        OVERLAY_KINDS.map((kind) => [kind, placement(kind)]),
+      ) as Answer<"getOverlayPlacementLayout">["overlays"],
     };
   });
 
   const placementKeys = new Set<OverlayWindowKey>(OVERLAY_WINDOW_KEYS);
-  handleAuthorized(
-    OVERLAY_SAVE_PLACEMENT,
-    assertMainRendererSender,
-    async (_event, rawKey: unknown, rawPos: unknown) => {
-      const key = placementKeys.has(rawKey as OverlayWindowKey)
-        ? (rawKey as OverlayWindowKey)
-        : null;
-      const pos = asRecord(rawPos);
-      if (!key || !pos) return { ok: false };
-      const xFrac = clampNumber(pos.xFrac, 0, 1, NaN);
-      const yFrac = clampNumber(pos.yFrac, 0, 1, NaN);
-      if (!Number.isFinite(xFrac) || !Number.isFinite(yFrac)) return { ok: false };
+  handle(api.saveOverlayPlacement, async (_event, rawKey: unknown, rawPos: unknown) => {
+    const key = placementKeys.has(rawKey as OverlayWindowKey) ? (rawKey as OverlayWindowKey) : null;
+    const pos = asRecord(rawPos);
+    if (!key || !pos) return { ok: false };
+    const xFrac = clampNumber(pos.xFrac, 0, 1, NaN);
+    const yFrac = clampNumber(pos.yFrac, 0, 1, NaN);
+    if (!Number.isFinite(xFrac) || !Number.isFinite(yFrac)) return { ok: false };
 
-      const display = screen.getPrimaryDisplay();
-      const area = display.workArea;
-      const position = {
-        x: Math.round(area.x + xFrac * area.width),
-        y: Math.round(area.y + yFrac * area.height),
-        displayId: String(display.id),
-      };
-      try {
-        await settingsController.updateOverlaySettings((current) => ({
-          overlayWindowBounds: {
-            ...(current.overlayWindowBounds || {}),
-            [key]: { ...current.overlayWindowBounds?.[key], ...position },
-          },
-        }));
-      } catch (error) {
-        log.warn(`[OverlayPlacement] ${key} not saved:`, error);
-        return { ok: false };
-      }
-      log.info(`[OverlayPlacement] saved ${key} -> ${position.x},${position.y}`);
-      return { ok: true };
-    },
-  );
+    const display = screen.getPrimaryDisplay();
+    const area = display.workArea;
+    const position = {
+      x: Math.round(area.x + xFrac * area.width),
+      y: Math.round(area.y + yFrac * area.height),
+      displayId: String(display.id),
+    };
+    try {
+      await settingsController.updateOverlaySettings((current) => ({
+        overlayWindowBounds: {
+          ...(current.overlayWindowBounds || {}),
+          [key]: { ...current.overlayWindowBounds?.[key], ...position },
+        },
+      }));
+    } catch (error) {
+      log.warn(`[OverlayPlacement] ${key} not saved:`, error);
+      return { ok: false };
+    }
+    log.info(`[OverlayPlacement] saved ${key} -> ${position.x},${position.y}`);
+    return { ok: true };
+  });
 
-  handleAuthorized(
-    OVERLAY_SAVE_SCALE,
-    assertMainRendererSender,
-    async (_event, rawKey: unknown, rawScale: unknown) => {
-      const key = placementKeys.has(rawKey as OverlayWindowKey)
-        ? (rawKey as OverlayWindowKey)
-        : null;
-      const scale = clampNumber(rawScale, 0.75, 1.5, NaN);
-      if (!key || !isScalableOverlayWindow(key) || !Number.isFinite(scale)) return { ok: false };
+  handle(api.saveOverlayScale, async (_event, rawKey: unknown, rawScale: unknown) => {
+    const key = placementKeys.has(rawKey as OverlayWindowKey) ? (rawKey as OverlayWindowKey) : null;
+    const scale = clampNumber(rawScale, 0.75, 1.5, NaN);
+    if (!key || !isScalableOverlayWindow(key) || !Number.isFinite(scale)) return { ok: false };
 
-      try {
-        await settingsController.updateOverlaySettings((current) => ({
-          overlayWindowScales: {
-            ...(current.overlayWindowScales || {}),
-            [key]: Number(scale.toFixed(2)),
-          },
-        }));
-      } catch (error) {
-        log.warn(`[OverlayPlacement] ${key} scale not saved:`, error);
-        return { ok: false };
-      }
+    try {
+      await settingsController.updateOverlaySettings((current) => ({
+        overlayWindowScales: {
+          ...(current.overlayWindowScales || {}),
+          [key]: Number(scale.toFixed(2)),
+        },
+      }));
+    } catch (error) {
+      log.warn(`[OverlayPlacement] ${key} scale not saved:`, error);
+      return { ok: false };
+    }
 
-      repositionOverlay(key);
-      log.info(`[OverlayPlacement] scale ${key} -> ${scale.toFixed(2)}`);
-      return { ok: true };
-    },
-  );
+    repositionOverlay(key);
+    log.info(`[OverlayPlacement] scale ${key} -> ${scale.toFixed(2)}`);
+    return { ok: true };
+  });
 }
 
 // The planner is pre-warmed before any overlay opens, so the idle mode has to match

@@ -2,33 +2,25 @@ import { registerRunTrackerIpc } from "./runTrackerIpc";
 import * as ptTracker from "../services/profitTakerTracker";
 import { importProfitTakerLog } from "../services/profitTakerLogImporter";
 import type { PtImportResult, PtRunsPayload } from "../config/shared/profitTakerTypes";
-import {
-  PT_GET_RUNS,
-  PT_REFRESH_RUNS,
-  PT_SET_TAGS,
-  PT_SET_NOTES,
-  PT_DELETE_RUN,
-  PT_DELETE_LOG,
-  PT_EXPORT_LOG,
-  PT_IMPORT_LOG,
-  PT_SHOW_LOG_IN_FOLDER,
-} from "../config/shared/ipcChannels";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
 import { withScope } from "../services/logger";
+
+const { api } = mainWindowRoutes;
 
 function register(): void {
   registerRunTrackerIpc<PtRunsPayload, PtImportResult>({
     log: withScope("profitTakerIpc"),
     label: "[PT]",
-    channels: {
-      getRuns: PT_GET_RUNS,
-      refreshRuns: PT_REFRESH_RUNS,
-      setTags: PT_SET_TAGS,
-      setNotes: PT_SET_NOTES,
-      deleteRun: PT_DELETE_RUN,
-      deleteLog: PT_DELETE_LOG,
-      exportLog: PT_EXPORT_LOG,
-      importLog: PT_IMPORT_LOG,
-      showLogInFolder: PT_SHOW_LOG_IN_FOLDER,
+    routes: {
+      getRuns: api.getPtRuns,
+      refreshRuns: api.refreshPtRuns,
+      setTags: api.setPtRunTags,
+      setNotes: api.setPtRunNotes,
+      deleteRun: api.deletePtRun,
+      deleteLog: api.deletePtRunLog,
+      exportLog: api.exportPtRunLog,
+      importLog: api.importPtLog,
+      showLogInFolder: api.showPtRunLogInFolder,
     },
     tracker: {
       getRuns: ptTracker.getPtRuns,

@@ -11,6 +11,9 @@ import type {
   ArbiRunsPayload,
 } from "../../config/shared/arbiTypes";
 import type { PtImportResult, PtRunsPayload } from "../../config/shared/profitTakerTypes";
+import { mainWindowRoutes } from "../../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 const noop = (): void => undefined;
 
@@ -238,16 +241,16 @@ describe("arbi IPC", () => {
     const spec = {
       log: { info: noop, warn: noop, error: noop, debug: noop, time: noop, timeEnd: noop },
       label: "[Arbi]",
-      channels: {
-        getRuns: "arbi:get-runs",
-        refreshRuns: "arbi:refresh-runs",
-        setTags: "arbi:set-tags",
-        setNotes: "arbi:set-notes",
-        deleteRun: "arbi:delete-run",
-        deleteLog: "arbi:delete-log",
-        exportLog: "arbi:export-log",
-        importLog: "arbi:import-log",
-        showLogInFolder: "arbi:show-log-in-folder",
+      routes: {
+        getRuns: api.getArbiRuns,
+        refreshRuns: api.refreshArbiRuns,
+        setTags: api.setArbiRunTags,
+        setNotes: api.setArbiRunNotes,
+        deleteRun: api.deleteArbiRun,
+        deleteLog: api.deleteArbiRunLog,
+        exportLog: api.exportArbiRunLog,
+        importLog: api.importArbiLog,
+        showLogInFolder: api.showArbiRunLogInFolder,
       },
       tracker: {
         getRuns: () => runs,
@@ -269,6 +272,10 @@ describe("arbi IPC", () => {
     // @ts-expect-error - the import result must carry the payload's own records
     register<ArbiRunsPayload, PtImportResult>(spec);
 
-    expect(spec.channels.getRuns).toBe("arbi:get-runs");
+    const ptRoutes = { ...spec.routes, getRuns: api.getPtRuns };
+    // @ts-expect-error - a Profit-Taker route answers with Profit-Taker runs
+    register<ArbiRunsPayload, ArbiImportResult>({ ...spec, routes: ptRoutes });
+
+    expect(spec.routes.getRuns.channel).toBe("arbi:get-runs");
   });
 });

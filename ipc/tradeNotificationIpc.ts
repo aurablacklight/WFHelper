@@ -1,6 +1,5 @@
 import ctx from "./context";
 import { registerTransientHotkey, unregisterTransientHotkey } from "./hotkeyRegistry";
-import { assertTradeNotificationSender, onAuthorized } from "./ipcSecurity";
 import { recordNotification } from "./notificationLogIpc";
 import { sendDesktopNotificationRaw } from "./worldStateIpc";
 import { withScope } from "../services/logger";
@@ -9,7 +8,6 @@ import { hardenBrowserWindowNavigation } from "../services/windowSecurity";
 import * as wfmReviews from "../services/wfmReviews";
 import {
   TRADE_NOTIFICATION_SHOW,
-  TRADE_NOTIFICATION_DISMISS,
   TRADE_NOTIFICATION_REP_RESULT,
   OVERLAY_CONTENT_VISIBLE,
 } from "../config/shared/ipcChannels";
@@ -34,6 +32,10 @@ const log = withScope("tradeNotificationIpc");
 
 import path from "node:path";
 import { app, BrowserWindow, screen } from "electron";
+import { listen } from "./routeHandlers";
+import { overlayRoutes } from "../config/shared/overlayIpcRoutes";
+
+const { tradeNotificationApi } = overlayRoutes;
 
 const SCALE = 1.5;
 const WIN_W = 370 * SCALE;
@@ -465,7 +467,7 @@ export function hideTradeNotification(): void {
 }
 
 export function register(): void {
-  onAuthorized(TRADE_NOTIFICATION_DISMISS, assertTradeNotificationSender, () => {
+  listen(tradeNotificationApi.dismiss, () => {
     const win = ctx.tradeNotificationWindow;
     if (win && !win.isDestroyed()) _hideWindow(win);
     _disarmRep();

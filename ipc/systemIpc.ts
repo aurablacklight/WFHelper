@@ -1,5 +1,5 @@
 import ctx from "./context";
-import { assertMainRendererSender, handleAuthorized, onAuthorized } from "./ipcSecurity";
+
 import { unwrapInventoryPayload } from "../config/shared/inventoryPayload";
 import { getLogDirectory, withScope } from "../services/logger";
 import * as itemDb from "../services/itemDatabase";
@@ -18,36 +18,9 @@ import { normalizeErrorMessage } from "../config/shared/errors";
 import { isAllowedExternalHost } from "../config/runtime/security";
 import { app, BrowserWindow, dialog, shell } from "electron";
 import {
-  DB_GET_ITEM_DATABASE,
-  GAME_LOCALE_UPDATED,
   ITEM_DB_UPDATED,
-  DB_GET_WFM_ITEMS,
-  DB_GET_MASTERY,
-  DB_GET_CODEX_SCANS,
-  PERSONAL_PROFILE_GET,
   PROFILE_ACCOUNT_CHANGED,
   INVENTORY_STATUS_UPDATED,
-  DB_GET_RELIC_DATABASE,
-  DB_GET_RELIC_DATA_INFO,
-  DROP_SEARCH,
-  DROP_ITEM_SOURCES,
-  SPAWN_NODES_GET,
-  APP_UPDATE_CHECK,
-  SYSTEM_CONFIRM,
-  APP_UPDATE_STATE,
-  APP_UPDATE_DOWNLOAD,
-  APP_UPDATE_INSTALL,
-  APP_RUNTIME_INFO,
-  SCAN_DEBUG_OPEN_FOLDER,
-  LOGS_OPEN_FOLDER,
-  LINUX_DISPLAY_GET,
-  LINUX_DISPLAY_SET,
-  LINUX_CAPTURE_SETUP,
-  WINDOW_MINIMIZE,
-  WINDOW_MAXIMIZE,
-  WINDOW_CLOSE,
-  LOG_WARN,
-  OPEN_EXTERNAL,
 } from "../config/shared/ipcChannels";
 import fs from "node:fs";
 import { getScanDebugDir } from "../services/rewardScanDebug";
@@ -56,6 +29,10 @@ import { setUpLinuxCapture } from "../services/linuxStreamCapture";
 import { isObject } from "./ipcValidators";
 import { toNonEmptyString } from "../config/shared/stringValidation";
 import { parsePersonalLoadouts } from "../services/personalLoadouts";
+import { handle, listen, type Answer } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 const log = withScope("systemIpc");
 let stopProfileAccountListener: (() => void) | null = null;
@@ -76,20 +53,22 @@ function register(): void {
   stopInventoryBindingListener ??= codexProfile.onInventoryProfileBindingChanged(() =>
     broadcastToRenderers(INVENTORY_STATUS_UPDATED, getInventoryStatus()),
   );
-  handleAuthorized(DB_GET_ITEM_DATABASE, assertMainRendererSender, () =>
-    itemDb.getRendererLookup(),
+  // The item database and the renderer type its entries separately.
+  handle(
+    api.getItemDatabase,
+    () => itemDb.getRendererLookup() as unknown as Answer<"getItemDatabase">,
   );
 
   // Names are localized on the way out of the database, so a language change only
   // has to make the renderer re-pull; nothing in the database itself is rebuilt.
-  onAuthorized(GAME_LOCALE_UPDATED, assertMainRendererSender, (_event, rawLocale: unknown) => {
+  listen(api.updateGameLocale, (_event, rawLocale: unknown) => {
     const locale = setGameLocale(rawLocale);
     if (!locale) return;
     log.info(`[GameLocale] locale=${locale}`);
     ctx.mainWindow?.webContents.send(ITEM_DB_UPDATED);
   });
 
-  handleAuthorized(DB_GET_WFM_ITEMS, assertMainRendererSender, async () => {
+  handle(api.getWfmItems, async () => {
     if (!wfmCatalog.isLoaded()) {
       try {
         await wfmCatalog.ensureLoaded();
@@ -97,10 +76,10 @@ function register(): void {
         log.warn("[WFMarket] get-wfm-items fetch failed:", normalizeErrorMessage(error));
       }
     }
-    return wfmCatalog.getRendererLookup();
+    return wfmCatalog.getRendererLookup() as Answer<"getWfmItems">;
   });
 
-  handleAuthorized(DB_GET_MASTERY, assertMainRendererSender, () => {
+  handle(api.getMasteryProgress, () => {
     if (!ctx.currentInventoryData) return null;
 
     const data = unwrapInventoryPayload(ctx.currentInventoryData, {
@@ -110,34 +89,38 @@ function register(): void {
           normalizeErrorMessage(error),
         ),
     });
-    return masteryHelper.computeMasteryProgress(data as Record<string, unknown>);
+    // The renderer's MasteryData claims full ParsedItem rows; the helper sends a subset.
+    return masteryHelper.computeMasteryProgress(
+      data as Record<string, unknown>,
+    ) as unknown as Answer<"getMasteryProgress">;
   });
 
-  handleAuthorized(
-    PERSONAL_PROFILE_GET,
-    assertMainRendererSender,
-    async (_event, refresh: unknown) => {
-      const generation = codexProfile.getProfileAccountGeneration();
-      const result = await codexProfile.getPersonalProfile(refresh === true);
-      if (generation !== codexProfile.getProfileAccountGeneration())
-        return { profile: null, fetchedAt: null, status: "account-changed", nextRefreshAt: 0 };
-      const inventorySource = getInventorySource();
-      const hash = getLoadedInventoryHash();
-      const savedLoadouts =
-        inventorySource === "helper" &&
-        hash &&
-        codexProfile.isInventorySnapshotForCurrentAccount(hash)
-          ? parsePersonalLoadouts(ctx.currentInventoryData)
-          : [];
-      return { ...result, inventorySource, savedLoadouts };
-    },
-  );
+  handle(api.getPersonalProfile, async (_event, refresh: unknown) => {
+    const generation = codexProfile.getProfileAccountGeneration();
+    const result = await codexProfile.getPersonalProfile(refresh === true);
+    if (generation !== codexProfile.getProfileAccountGeneration())
+      return {
+        profile: null,
+        fetchedAt: null,
+        status: "account-changed" as const,
+        nextRefreshAt: 0,
+      };
+    const inventorySource = getInventorySource();
+    const hash = getLoadedInventoryHash();
+    const savedLoadouts =
+      inventorySource === "helper" &&
+      hash &&
+      codexProfile.isInventorySnapshotForCurrentAccount(hash)
+        ? parsePersonalLoadouts(ctx.currentInventoryData)
+        : [];
+    return { ...result, inventorySource, savedLoadouts };
+  });
 
-  handleAuthorized(DB_GET_CODEX_SCANS, assertMainRendererSender, async (_event, force: unknown) => {
+  handle(api.getCodexScans, async (_event, force: unknown) => {
     const generation = codexProfile.getProfileAccountGeneration();
     const result = await codexProfile.getCodexScans(force === true);
     if (generation !== codexProfile.getProfileAccountGeneration())
-      return { error: "account-changed", nextRefreshAt: 0 };
+      return { error: "account-changed" as const, nextRefreshAt: 0 };
     const hash = getLoadedInventoryHash();
     const scans =
       (!result.error || (result.error === "fetch-failed" && result.scans)) &&
@@ -148,30 +131,32 @@ function register(): void {
     return { ...result, ...(scans ? { scans } : {}), inventorySource: getInventorySource() };
   });
 
-  handleAuthorized(DROP_SEARCH, assertMainRendererSender, async (_event, payload: unknown) => {
-    if (!isObject(payload)) return [];
+  // Known drift: a rejected query answers [] although the route promises { rows, total }.
+  handle(api.searchDrops, async (_event, payload: unknown): Promise<Answer<"searchDrops">> => {
+    const rejected = [] as unknown as Answer<"searchDrops">;
+    if (!isObject(payload)) return rejected;
     const query = toNonEmptyString(payload.query, 200);
     const mode =
       payload.mode === "item" || payload.mode === "place" || payload.mode === "enemy"
         ? payload.mode
         : null;
-    if (!query || !mode) return [];
+    if (!query || !mode) return rejected;
     await ensureDropData();
     return dropData.searchDrops(query, mode);
   });
 
-  handleAuthorized(DROP_ITEM_SOURCES, assertMainRendererSender, async (_event, name: unknown) => {
+  handle(api.dropSourcesForItem, async (_event, name: unknown) => {
     const itemName = toNonEmptyString(name, 200);
     if (!itemName) return [];
     await ensureDropData();
     return dropData.dropsForItem(itemName);
   });
 
-  handleAuthorized(SPAWN_NODES_GET, assertMainRendererSender, () => getSpawnNodes());
+  handle(api.getSpawnNodes, () => getSpawnNodes());
 
   // window.confirm leaves renderer keyboard input dead on Windows after it
   // closes (Chromium bug), so destructive confirmations use the native dialog.
-  handleAuthorized(SYSTEM_CONFIRM, assertMainRendererSender, async (event, payload: unknown) => {
+  handle(api.confirmDialog, async (event, payload: unknown) => {
     const p = (payload ?? {}) as { message?: unknown; okLabel?: unknown; cancelLabel?: unknown };
     const message = typeof p.message === "string" ? p.message.slice(0, 500) : "";
     if (!message) return false;
@@ -193,17 +178,18 @@ function register(): void {
     return response === 0;
   });
 
-  handleAuthorized(APP_UPDATE_CHECK, assertMainRendererSender, () =>
-    autoUpdater.checkForUpdates("manual"),
+  // The updater keeps its status as a plain string; the renderer narrows it.
+  handle(
+    api.checkForAppUpdates,
+    () => autoUpdater.checkForUpdates("manual") as Promise<Answer<"checkForAppUpdates">>,
   );
-  handleAuthorized(APP_UPDATE_STATE, assertMainRendererSender, () => autoUpdater.getUpdateState());
-  handleAuthorized(APP_UPDATE_DOWNLOAD, assertMainRendererSender, () =>
-    autoUpdater.downloadUpdate(),
+  handle(api.getAppUpdateState, () => autoUpdater.getUpdateState() as Answer<"getAppUpdateState">);
+  handle(
+    api.downloadAppUpdate,
+    () => autoUpdater.downloadUpdate() as Promise<Answer<"downloadAppUpdate">>,
   );
-  handleAuthorized(APP_UPDATE_INSTALL, assertMainRendererSender, () =>
-    autoUpdater.installDownloadedUpdate(),
-  );
-  handleAuthorized(SCAN_DEBUG_OPEN_FOLDER, assertMainRendererSender, async () => {
+  handle(api.installDownloadedUpdate, () => autoUpdater.installDownloadedUpdate());
+  handle(api.openScanDebugFolder, async () => {
     try {
       const dir = getScanDebugDir();
       await fs.promises.mkdir(dir, { recursive: true });
@@ -218,7 +204,7 @@ function register(): void {
     }
   });
 
-  handleAuthorized(LOGS_OPEN_FOLDER, assertMainRendererSender, async () => {
+  handle(api.openLogFolder, async () => {
     try {
       const dir = getLogDirectory();
       if (!dir) return { ok: false };
@@ -232,32 +218,29 @@ function register(): void {
     }
   });
 
-  handleAuthorized(APP_RUNTIME_INFO, assertMainRendererSender, () => ({
+  handle(api.getAppRuntimeInfo, () => ({
     isPackaged: app.isPackaged,
   }));
 
-  handleAuthorized(DB_GET_RELIC_DATABASE, assertMainRendererSender, () =>
-    relicService.getRelicDatabase(),
-  );
-  handleAuthorized(DB_GET_RELIC_DATA_INFO, assertMainRendererSender, () =>
-    relicService.getRelicDataInfo(),
-  );
+  // relicService and the renderer type the relic groups separately.
+  handle(api.getRelicDatabase, () => relicService.getRelicDatabase() as Answer<"getRelicDatabase">);
+  handle(api.getRelicDataInfo, () => relicService.getRelicDataInfo());
 
-  handleAuthorized(LINUX_DISPLAY_GET, assertMainRendererSender, () => linuxDisplay.info());
+  handle(api.getLinuxDisplay, () => linuxDisplay.info());
 
-  handleAuthorized(LINUX_DISPLAY_SET, assertMainRendererSender, (_event, preference: unknown) =>
+  handle(api.setLinuxDisplay, (_event, preference: unknown) =>
     linuxDisplay.applyPreference(preference),
   );
 
-  handleAuthorized(LINUX_CAPTURE_SETUP, assertMainRendererSender, async () =>
+  handle(api.setUpLinuxCapture, async () =>
     linuxDisplay.usesCapturePortal() ? setUpLinuxCapture() : { state: "unsupported" as const },
   );
 
-  onAuthorized(WINDOW_MINIMIZE, assertMainRendererSender, () => {
+  listen(api.minimizeWindow, () => {
     ctx.mainWindow?.minimize();
   });
 
-  onAuthorized(WINDOW_MAXIMIZE, assertMainRendererSender, () => {
+  listen(api.maximizeWindow, () => {
     if (ctx.mainWindow?.isMaximized()) {
       ctx.mainWindow.unmaximize();
     } else {
@@ -265,19 +248,15 @@ function register(): void {
     }
   });
 
-  onAuthorized(WINDOW_CLOSE, assertMainRendererSender, () => {
+  listen(api.closeWindow, () => {
     ctx.mainWindow?.close();
   });
 
-  onAuthorized(
-    LOG_WARN,
-    assertMainRendererSender,
-    (_event, message: unknown, ...args: unknown[]) => {
-      log.warn("[renderer]", String(message), ...args);
-    },
-  );
+  listen(api.logWarn, (_event, message: unknown, ...args: unknown[]) => {
+    log.warn("[renderer]", String(message), ...args);
+  });
 
-  onAuthorized(OPEN_EXTERNAL, assertMainRendererSender, (_event, url: unknown) => {
+  listen(api.openExternal, (_event, url: unknown) => {
     try {
       const parsed = new URL(String(url));
       const isHttps = parsed.protocol === "https:";

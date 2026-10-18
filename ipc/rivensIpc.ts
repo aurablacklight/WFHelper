@@ -1,4 +1,3 @@
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
 import ctx from "./context";
 import * as rivenFingerprint from "../services/rivenFingerprint";
 import * as rivenGrading from "../services/rivenGrading";
@@ -17,19 +16,11 @@ import {
   tagToWfmUrlName,
   wfmUrlNameToTag,
 } from "../config/shared/wfmRivenVocabulary";
-import {
-  RIVENS_GET,
-  RIVENS_GET_WEAPON_NAMES,
-  RIVENS_GET_STAT_OPTIONS,
-  RIVENS_SEARCH_AUCTIONS,
-  RIVENS_GET_BEST_ATTRIBUTES,
-  RIVENS_GET_GOOD_ROLL,
-  RIVENS_REFRESH_GOOD_ROLLS,
-  RIVENS_GRADE_CONTRACTS,
-  RIVENS_CREATE_AUCTION,
-  RIVENS_UPDATE_AUCTION,
-  RIVENS_DELETE_AUCTION,
-} from "../config/shared/ipcChannels";
+
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api, tradeApi } = mainWindowRoutes;
 
 const MAX_AUCTION_STATS = 8;
 const MAX_DESCRIPTION_LENGTH = 1000;
@@ -192,7 +183,7 @@ async function rivenMarketWeaponNames(): Promise<string[]> {
 }
 
 function register(): void {
-  handleAuthorized(RIVENS_GET, assertMainRendererSender, async () => {
+  handle(api.getRivens, async () => {
     if (!ctx.currentInventoryData) {
       return { unveiled: [], veiled: [], veiledUnseen: [] };
     }
@@ -201,20 +192,14 @@ function register(): void {
     return rivenFingerprint.decodeAllRivens(ctx.currentInventoryData);
   });
 
-  handleAuthorized(
-    RIVENS_GET_WEAPON_NAMES,
-    assertMainRendererSender,
-    (_event, rivenMarketOnly: unknown) =>
-      rivenMarketOnly === true ? rivenMarketWeaponNames() : rivenData.getAllRivenWeaponNames(),
+  handle(api.getRivenWeaponNames, (_event, rivenMarketOnly: unknown) =>
+    rivenMarketOnly === true ? rivenMarketWeaponNames() : rivenData.getAllRivenWeaponNames(),
   );
 
-  handleAuthorized(RIVENS_GET_STAT_OPTIONS, assertMainRendererSender, () =>
-    rivenData.getRivenStatOptions(),
-  );
+  handle(api.getRivenStatOptions, () => rivenData.getRivenStatOptions());
 
-  handleAuthorized(
-    RIVENS_SEARCH_AUCTIONS,
-    assertMainRendererSender,
+  handle(
+    api.searchRivenAuctions,
     async (_event, weaponName: unknown, positiveWfmNames: unknown, negativeWfmNames: unknown) => {
       const weapon = toNonEmptyString(weaponName, 120);
       if (!weapon) return [];
@@ -232,55 +217,42 @@ function register(): void {
     },
   );
 
-  handleAuthorized(
-    RIVENS_GET_BEST_ATTRIBUTES,
-    assertMainRendererSender,
-    async (_event, weaponName: unknown) => {
-      const weapon = toNonEmptyString(weaponName, 120);
-      await rivenBestAttributes.ensureRivenGoodRollsLoaded();
-      return {
-        attributes: weapon
-          ? rivenBestAttributes.getBestAttributes(weapon, rivenData.isMeleeWeapon(weapon))
-          : null,
-        updatedAt: rivenBestAttributes.getRivenGoodRollsUpdatedAt(),
-      };
-    },
-  );
-
-  handleAuthorized(
-    RIVENS_GET_GOOD_ROLL,
-    assertMainRendererSender,
-    async (_event, weaponName: unknown) => {
-      const weapon = toNonEmptyString(weaponName, 120);
-      if (!weapon) return null;
-      await rivenBestAttributes.ensureRivenGoodRollsLoaded();
-      const detail = rivenBestAttributes.getGoodRollDetail(weapon, rivenData.isMeleeWeapon(weapon));
-      if (detail) return detail;
-      // WFM slugs spell the ampersand out ("silva_and_aegis"), so the sheet's name never matches.
-      const bySlug = weaponNameForFamilySlug(weapon);
-      return bySlug
-        ? rivenBestAttributes.getGoodRollDetail(bySlug, rivenData.isMeleeWeapon(bySlug))
-        : null;
-    },
-  );
-
-  handleAuthorized(
-    RIVENS_REFRESH_GOOD_ROLLS,
-    assertMainRendererSender,
-    async (_event, weaponName: unknown) => {
-      await rivenBestAttributes.ensureRivenGoodRollsLoaded(true);
-      const updatedAt = rivenBestAttributes.getRivenGoodRollsUpdatedAt();
-      const weapon = toNonEmptyString(weaponName, 120);
-      const attributes = weapon
+  handle(api.getRivenBestAttributes, async (_event, weaponName: unknown) => {
+    const weapon = toNonEmptyString(weaponName, 120);
+    await rivenBestAttributes.ensureRivenGoodRollsLoaded();
+    return {
+      attributes: weapon
         ? rivenBestAttributes.getBestAttributes(weapon, rivenData.isMeleeWeapon(weapon))
-        : null;
-      return { attributes, updatedAt };
-    },
-  );
+        : null,
+      updatedAt: rivenBestAttributes.getRivenGoodRollsUpdatedAt(),
+    };
+  });
 
-  handleAuthorized(
-    RIVENS_GRADE_CONTRACTS,
-    assertMainRendererSender,
+  handle(api.getRivenGoodRoll, async (_event, weaponName: unknown) => {
+    const weapon = toNonEmptyString(weaponName, 120);
+    if (!weapon) return null;
+    await rivenBestAttributes.ensureRivenGoodRollsLoaded();
+    const detail = rivenBestAttributes.getGoodRollDetail(weapon, rivenData.isMeleeWeapon(weapon));
+    if (detail) return detail;
+    // WFM slugs spell the ampersand out ("silva_and_aegis"), so the sheet's name never matches.
+    const bySlug = weaponNameForFamilySlug(weapon);
+    return bySlug
+      ? rivenBestAttributes.getGoodRollDetail(bySlug, rivenData.isMeleeWeapon(bySlug))
+      : null;
+  });
+
+  handle(api.refreshRivenGoodRolls, async (_event, weaponName: unknown) => {
+    await rivenBestAttributes.ensureRivenGoodRollsLoaded(true);
+    const updatedAt = rivenBestAttributes.getRivenGoodRollsUpdatedAt();
+    const weapon = toNonEmptyString(weaponName, 120);
+    const attributes = weapon
+      ? rivenBestAttributes.getBestAttributes(weapon, rivenData.isMeleeWeapon(weapon))
+      : null;
+    return { attributes, updatedAt };
+  });
+
+  handle(
+    api.gradeRivenContracts,
     async (_event, payload: unknown): Promise<ContractGradesResult> => {
       const sheetReady = rivenBestAttributes.rivenGoodRollsAreCurrent();
       if (!Array.isArray(payload) || payload.length > MAX_GRADED_CONTRACTS) {
@@ -297,139 +269,127 @@ function register(): void {
     },
   );
 
-  handleAuthorized(
-    RIVENS_CREATE_AUCTION,
-    assertMainRendererSender,
-    async (_event, payload: unknown) => {
-      if (!isObject(payload)) return { ok: false, error: "Invalid payload" };
-      const {
-        weaponName,
-        rivenName,
-        stats,
-        rerolls,
-        masteryReq,
-        polarity,
-        modRank,
-        buyoutPrice,
-        startingPrice,
-        minReputation,
-        isPrivate,
-        description,
-      } = payload;
-      const weapon = toNonEmptyString(weaponName, 120);
-      if (!weapon) return { ok: false, error: "Invalid weapon name" };
-      if (!Array.isArray(stats) || stats.length === 0 || stats.length > MAX_AUCTION_STATS)
-        return { ok: false, error: "No stats provided" };
-      if (!stats.every(isCreateAuctionStat)) return { ok: false, error: "Invalid stats payload" };
-      const price = boundedInt(startingPrice, 1, 10_000_000);
-      if (price == null) return { ok: false, error: "Invalid price" };
-      const reputation = auctionReputation(minReputation);
-      if (reputation == null) return { ok: false, error: "Invalid minimum reputation" };
-      const descriptionValue = auctionDescription(description);
-      if (descriptionValue == null) return { ok: false, error: "Invalid description" };
+  handle(tradeApi.createRivenAuction, async (_event, payload: unknown) => {
+    if (!isObject(payload)) return { ok: false, error: "Invalid payload" };
+    const {
+      weaponName,
+      rivenName,
+      stats,
+      rerolls,
+      masteryReq,
+      polarity,
+      modRank,
+      buyoutPrice,
+      startingPrice,
+      minReputation,
+      isPrivate,
+      description,
+    } = payload;
+    const weapon = toNonEmptyString(weaponName, 120);
+    if (!weapon) return { ok: false, error: "Invalid weapon name" };
+    if (!Array.isArray(stats) || stats.length === 0 || stats.length > MAX_AUCTION_STATS)
+      return { ok: false, error: "No stats provided" };
+    if (!stats.every(isCreateAuctionStat)) return { ok: false, error: "Invalid stats payload" };
+    const price = boundedInt(startingPrice, 1, 10_000_000);
+    if (price == null) return { ok: false, error: "Invalid price" };
+    const reputation = auctionReputation(minReputation);
+    if (reputation == null) return { ok: false, error: "Invalid minimum reputation" };
+    const descriptionValue = auctionDescription(description);
+    if (descriptionValue == null) return { ok: false, error: "Invalid description" };
 
-      const slug = rivenData.getRivenFamilySlug(weapon);
-      if (!slug) return { ok: false, error: "Unknown weapon" };
+    const slug = rivenData.getRivenFamilySlug(weapon);
+    if (!slug) return { ok: false, error: "Unknown weapon" };
 
-      const attributes = stats.map((s) => {
-        const urlName = tagToWfmUrlName(String(s.tag));
-        // WFM preserves displayed signs, including negative recoil buffs and positive curses.
-        const value = toFiniteNumber(s.value) ?? 0;
-        return {
-          url_name: urlName || String(s.tag),
-          value,
-          positive: s.positive !== false,
-        };
-      });
+    const attributes = stats.map((s) => {
+      const urlName = tagToWfmUrlName(String(s.tag));
+      // WFM preserves displayed signs, including negative recoil buffs and positive curses.
+      const value = toFiniteNumber(s.value) ?? 0;
+      return {
+        url_name: urlName || String(s.tag),
+        value,
+        positive: s.positive !== false,
+      };
+    });
 
-      // WFM rejects an unknown polarity, so an absent value defaults instead of erroring.
-      const wfmPolarity = polarityToWfm(toNonEmptyString(polarity, 32)) ?? "madurai";
+    // WFM rejects an unknown polarity, so an absent value defaults instead of erroring.
+    const wfmPolarity = polarityToWfm(toNonEmptyString(polarity, 32)) ?? "madurai";
 
-      // WFM expects only the generated suffix portion of the riven name in lowercase
-      // (e.g. "croni-visican"), NOT the full "Angstrum Croni-visican".
-      const rivenSuffix = (() => {
-        const rn = toNonEmptyString(rivenName, 120) ?? weapon;
-        const prefix = weapon + " ";
-        const suffix = rn.startsWith(prefix) ? rn.slice(prefix.length) : rn;
-        return suffix.toLowerCase();
-      })();
+    // WFM expects only the generated suffix portion of the riven name in lowercase
+    // (e.g. "croni-visican"), NOT the full "Angstrum Croni-visican".
+    const rivenSuffix = (() => {
+      const rn = toNonEmptyString(rivenName, 120) ?? weapon;
+      const prefix = weapon + " ";
+      const suffix = rn.startsWith(prefix) ? rn.slice(prefix.length) : rn;
+      return suffix.toLowerCase();
+    })();
 
-      return wfmRivenSearch.createRivenAuction({
-        weaponSlug: slug,
-        rivenName: rivenSuffix,
-        attributes,
-        rerolls: boundedInt(rerolls, 0, 10_000) ?? 0,
-        masteryLevel: boundedInt(masteryReq, 0, 99) ?? 0,
-        polarity: wfmPolarity,
-        modRank: boundedInt(modRank, 0, 20) ?? 0,
-        buyoutPrice: boundedInt(buyoutPrice, 1, 10_000_000),
-        startingPrice: price,
-        minReputation: reputation,
-        isPrivate: isPrivate === true,
-        description: descriptionValue,
-      });
-    },
-  );
+    return wfmRivenSearch.createRivenAuction({
+      weaponSlug: slug,
+      rivenName: rivenSuffix,
+      attributes,
+      rerolls: boundedInt(rerolls, 0, 10_000) ?? 0,
+      masteryLevel: boundedInt(masteryReq, 0, 99) ?? 0,
+      polarity: wfmPolarity,
+      modRank: boundedInt(modRank, 0, 20) ?? 0,
+      buyoutPrice: boundedInt(buyoutPrice, 1, 10_000_000),
+      startingPrice: price,
+      minReputation: reputation,
+      isPrivate: isPrivate === true,
+      description: descriptionValue,
+    });
+  });
 
-  handleAuthorized(
-    RIVENS_UPDATE_AUCTION,
-    assertMainRendererSender,
-    async (_event, payload: unknown) => {
-      if (!isObject(payload)) return { ok: false, error: "Invalid payload" };
-      const {
-        auctionId,
-        buyoutPrice,
-        startingPrice,
-        minReputation,
-        isPrivate,
-        description,
-        visible,
-      } = payload;
-      const id = toNonEmptyString(auctionId, 64);
-      if (!id || !/^[a-zA-Z0-9]+$/.test(id)) {
-        return { ok: false, error: "Invalid auction id" };
-      }
-      // Null is a direct sell, which never had an opening bid.
-      const price = startingPrice == null ? null : boundedInt(startingPrice, 1, 10_000_000);
-      if (startingPrice != null && price == null) {
-        return { ok: false, error: "Invalid price" };
-      }
-      if (typeof visible !== "boolean" && typeof isPrivate !== "boolean") {
-        return { ok: false, error: "Invalid visibility" };
-      }
-      const buyout = buyoutPrice == null ? null : boundedInt(buyoutPrice, 1, 10_000_000);
-      if (buyoutPrice != null && buyout == null) {
-        return { ok: false, error: "Invalid buyout price" };
-      }
-      const reputation = auctionReputation(minReputation);
-      if (reputation == null) return { ok: false, error: "Invalid minimum reputation" };
-      const descriptionValue = auctionDescription(description);
-      if (descriptionValue == null) return { ok: false, error: "Invalid description" };
+  handle(tradeApi.updateRivenAuction, async (_event, payload: unknown) => {
+    if (!isObject(payload)) return { ok: false, error: "Invalid payload" };
+    const {
+      auctionId,
+      buyoutPrice,
+      startingPrice,
+      minReputation,
+      isPrivate,
+      description,
+      visible,
+    } = payload;
+    const id = toNonEmptyString(auctionId, 64);
+    if (!id || !/^[a-zA-Z0-9]+$/.test(id)) {
+      return { ok: false, error: "Invalid auction id" };
+    }
+    // Null is a direct sell, which never had an opening bid.
+    const price = startingPrice == null ? null : boundedInt(startingPrice, 1, 10_000_000);
+    if (startingPrice != null && price == null) {
+      return { ok: false, error: "Invalid price" };
+    }
+    if (typeof visible !== "boolean" && typeof isPrivate !== "boolean") {
+      return { ok: false, error: "Invalid visibility" };
+    }
+    const buyout = buyoutPrice == null ? null : boundedInt(buyoutPrice, 1, 10_000_000);
+    if (buyoutPrice != null && buyout == null) {
+      return { ok: false, error: "Invalid buyout price" };
+    }
+    const reputation = auctionReputation(minReputation);
+    if (reputation == null) return { ok: false, error: "Invalid minimum reputation" };
+    const descriptionValue = auctionDescription(description);
+    if (descriptionValue == null) return { ok: false, error: "Invalid description" };
 
-      return wfmRivenSearch.updateRivenAuction({
-        auctionId: id,
-        buyoutPrice: buyout,
-        startingPrice: price,
-        minReputation: reputation,
-        description: descriptionValue,
-        ...(typeof isPrivate === "boolean" ? { isPrivate } : {}),
-        ...(typeof visible === "boolean" ? { visible } : {}),
-      });
-    },
-  );
+    return wfmRivenSearch.updateRivenAuction({
+      auctionId: id,
+      buyoutPrice: buyout,
+      startingPrice: price,
+      minReputation: reputation,
+      description: descriptionValue,
+      ...(typeof isPrivate === "boolean" ? { isPrivate } : {}),
+      ...(typeof visible === "boolean" ? { visible } : {}),
+    });
+  });
 
-  handleAuthorized(
-    RIVENS_DELETE_AUCTION,
-    assertMainRendererSender,
-    async (_event, payload: unknown) => {
-      if (!isObject(payload)) return { ok: false, error: "Invalid payload" };
-      const id = toNonEmptyString(payload.auctionId, 64);
-      if (!id || !/^[a-zA-Z0-9]+$/.test(id)) {
-        return { ok: false, error: "Invalid auction id" };
-      }
-      return wfmRivenSearch.deleteRivenAuction(id);
-    },
-  );
+  handle(tradeApi.deleteRivenAuction, async (_event, payload: unknown) => {
+    if (!isObject(payload)) return { ok: false, error: "Invalid payload" };
+    const id = toNonEmptyString(payload.auctionId, 64);
+    if (!id || !/^[a-zA-Z0-9]+$/.test(id)) {
+      return { ok: false, error: "Invalid auction id" };
+    }
+    return wfmRivenSearch.deleteRivenAuction(id);
+  });
 }
 
 export { register, rivenMarketWeaponNames };

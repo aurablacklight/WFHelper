@@ -1,5 +1,5 @@
 import ctx from "./context";
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
+
 import {
   hasInventoryShape,
   unwrapInventoryPayload,
@@ -7,16 +7,7 @@ import {
 } from "../config/shared/inventoryPayload";
 import { withScope } from "../services/logger";
 import { normalizeErrorMessage } from "../config/shared/errors";
-import {
-  INVENTORY_EXPORT,
-  INVENTORY_GET,
-  INVENTORY_OPEN_ALECA_FRAME_FILE,
-  INVENTORY_OPEN_FILE,
-  INVENTORY_GET_STATUS,
-  INVENTORY_SET_SOURCE,
-  INVENTORY_STATUS_UPDATED,
-  INVENTORY_UPDATED,
-} from "../config/shared/ipcChannels";
+import { INVENTORY_STATUS_UPDATED, INVENTORY_UPDATED } from "../config/shared/ipcChannels";
 import {
   DEFAULT_INVENTORY_SOURCE,
   normalizeInventorySource,
@@ -37,6 +28,10 @@ import { writeFileAtomicSync } from "../services/atomicFile";
 import { broadcastToRenderers } from "./popoutIpc";
 import chokidar from "chokidar";
 import crypto from "node:crypto";
+import { handle, type Answer } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 const log = withScope("inventoryIpc");
 
@@ -624,19 +619,16 @@ function readableInventoryText(data: unknown): string {
 }
 
 function register(): void {
-  handleAuthorized(INVENTORY_GET, assertMainRendererSender, async () => {
-    return readCurrentInventory();
+  // The main process keeps the inventory as parsed JSON; only the renderer types it.
+  handle(api.getInventory, async () => {
+    return readCurrentInventory() as Answer<"getInventory">;
   });
 
-  handleAuthorized(
-    INVENTORY_SET_SOURCE,
-    assertMainRendererSender,
-    async (_event, raw: unknown) => ({
-      source: setInventorySource(normalizeInventorySource(raw)),
-    }),
-  );
+  handle(api.setInventorySource, async (_event, raw: unknown) => ({
+    source: setInventorySource(normalizeInventorySource(raw)),
+  }));
 
-  handleAuthorized(INVENTORY_OPEN_FILE, assertMainRendererSender, async (_event, raw: unknown) => {
+  handle(api.openInventoryFile, async (_event, raw: unknown) => {
     // The setup wizard says whether this pick replaces the helper ("manual") or
     // just seeds it while the helper keeps refreshing.
     const source: JsonInventorySource = raw === "manual" ? "manual" : "helper";
@@ -660,12 +652,12 @@ function register(): void {
       ctx.currentInventoryPath = filePath;
       watchInventoryFile(filePath, source);
       if (previousSource !== _trustedInventorySource) inventorySync.apply(`source ${source}`);
-      return data;
+      return data as Answer<"openInventoryFile">;
     }
     return null;
   });
 
-  handleAuthorized(INVENTORY_OPEN_ALECA_FRAME_FILE, assertMainRendererSender, async () => {
+  handle(api.openAlecaFrameInventoryFile, async () => {
     const alecaDefaultPath = path.join(
       process.env.LOCALAPPDATA || app.getPath("home"),
       "AlecaFrame",
@@ -692,16 +684,13 @@ function register(): void {
       watchInventoryFile(filePath, "aleca");
       if (previousSource !== _trustedInventorySource) inventorySync.apply("source aleca");
     }
-    return data;
+    return data as Answer<"openAlecaFrameInventoryFile">;
   });
 
-  handleAuthorized(INVENTORY_GET_STATUS, assertMainRendererSender, async () =>
-    getInventoryStatus(),
-  );
+  handle(api.getInventoryStatus, async () => getInventoryStatus());
 
-  handleAuthorized(
-    INVENTORY_EXPORT,
-    assertMainRendererSender,
+  handle(
+    api.exportInventory,
     async (): Promise<{ saved: boolean; path?: string; error?: InventoryExportError }> => {
       const data = ctx.currentInventoryData;
       if (!data) return { saved: false, error: "noInventory" };

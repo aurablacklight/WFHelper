@@ -61,3 +61,14 @@ Domain terms for this repository. A glossary only: no implementation detail.
 - **Settings effect**: what a part of the app does to follow a setting, such as
   creating the tray icon or re-registering a hotkey. It applies the saved value
   once at startup, if it needs to, and again on each change to that setting.
+
+## Windows and IPC
+
+- **IPC route**: one call between a window and the main process: invoke
+  (answered), send (fire and forget) or event (pushed from main). Named by the
+  method the window calls, carried on one channel.
+- **Surface**: the set of routes one window global exposes, such as the main
+  window's `api` and `tradeApi`, or an overlay's bridge.
+- **Sender policy**: which windows a route accepts calls from: the main window
+  and its popouts, popouts only, the scan overlays, every overlay, or one named
+  overlay. Calls from any other window are refused.

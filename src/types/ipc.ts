@@ -1,87 +1,7 @@
-import type { MasteryData, RawInventoryData, ItemDbEntry } from "./inventory.js";
-import type { MarketStatPoint, MarketStatsMergeMode } from "../../config/shared/marketStats.js";
-import type {
-  WfmContractsQuery,
-  WfmContractsResult,
-  WfmCloseResult,
-  WfmCreateOrderInput,
-  WfmDeleteResult,
-  WfmLookupItem,
-  WfmMutationError,
-  WfmOrder,
-  WfmOrdersResult,
-  WfmPresenceState,
-  WfmSearchItem,
-  WfmSession,
-  WfmStatus,
-  WfmStatusResult,
-  WfmUpdateOrderInput,
-  WfmUserProfile,
-} from "./market.js";
-import type {
-  AdvisorFaction,
-  GunBuildReview,
-  OwnedGunSummary,
-} from "../../config/shared/buildAdvisorTypes.js";
-import type { DropRow, DropSearchMode, DropSearchResult } from "../../config/shared/dropTypes.js";
-import type { SpawnNode } from "../../config/shared/spawnNodeTypes.js";
-import type {
-  WorkbenchExecuteResult,
-  WorkbenchOverrideAck,
-  WorkbenchPlan,
-  WorkbenchPlanValidation,
-  WorkbenchResolveReviewPayload,
-  WorkbenchReviewReport,
-  WorkbenchSafetySnapshot,
-  WorkbenchState,
-} from "../../config/shared/tradeWorkbenchTypes.js";
-import type {
-  LedgerErrorCode,
-  LedgerEventPatch,
-  LedgerExportOptions,
-  LedgerImportPreview,
-  LedgerImportResult,
-  LedgerPage,
-  LedgerQuery,
-} from "../../config/shared/tradeLedgerTypes.js";
-import type {
-  PopoutOpenOptions,
-  PopoutTarget,
-  PopoutView,
-  PopoutWindowInfo,
-} from "../../config/shared/popoutTypes.js";
-import type { RelicDatabase } from "./relics.js";
-import type { RelicDataInfo } from "../../config/shared/relicDataInfo.js";
-import type { RelicOverlayFilterPush } from "../../config/shared/relicPlannerView.js";
-import type { WorldState } from "./world.js";
-import type { HelperStatus } from "../../config/shared/apiHelperTypes.js";
-import type { CodexScansResult } from "../../config/shared/codexTypes.js";
-import type { InventoryExportError, InventorySource } from "../../config/shared/inventorySource.js";
-import type {
-  DisplayPreference,
-  LinuxCaptureSetupResult,
-  LinuxDisplayInfo,
-} from "../../config/shared/linuxDisplay.js";
-import type {
-  NotificationChannelState,
-  NotificationEntry,
-  NotificationSource,
-  SetDiscordPingResult,
-  SetWebhookResult,
-  SourceChannelToggles,
-  WebhookChannel,
-  WebhookTestResult,
-} from "../../config/shared/notifications.js";
-import type {
-  MarketAlertEngineStatus,
-  MarketAlertHit,
-  MarketAlertImportOutcome,
-  MarketAlertListResult,
-  MarketAlertSavePayload,
-  MarketAlertSaveResult,
-  MarketAlertTestFireResult,
-} from "../../config/shared/marketAlertTypes.js";
-import type { OverlaySettings, OverlayWindowKey } from "../../config/runtime/overlaySettings.js";
+import type { ItemDbEntry } from "./inventory.js";
+import type { WfmPresenceState } from "./market.js";
+import type { InventorySource } from "../../config/shared/inventorySource.js";
+import type { MarketAlertEngineStatus } from "../../config/shared/marketAlertTypes.js";
 
 export type { HelperStatus } from "../../config/shared/apiHelperTypes.js";
 export type { InventorySource } from "../../config/shared/inventorySource.js";
@@ -116,19 +36,19 @@ export interface AppUpdateState {
   timestamp: number;
 }
 
-interface AppUpdateCheckResult {
+export interface AppUpdateCheckResult {
   ok: boolean;
   source?: string;
   message?: string;
   state: AppUpdateState;
 }
 
-interface AppUpdateInstallResult {
+export interface AppUpdateInstallResult {
   ok: boolean;
   message?: string;
 }
 
-interface AppRuntimeInfo {
+export interface AppRuntimeInfo {
   isPackaged: boolean;
 }
 
@@ -139,7 +59,7 @@ interface InventoryReadError {
   at: number;
 }
 
-interface InventoryStatus {
+export interface InventoryStatus {
   path: string | null;
   found: boolean;
   source: InventorySource;
@@ -168,669 +88,22 @@ export type WfmItemsLookup = Record<
 >;
 export type ItemDbLookup = Record<string, ItemDbEntry>;
 
-type WfmOrderResult = WfmOrder | WfmMutationError;
-type WfmDeleteOrderResult = WfmDeleteResult | WfmMutationError;
-type WfmCloseOrderResult = WfmCloseResult | WfmMutationError;
-type WfmSetVisibleResult = Array<WfmOrder | WfmMutationError>;
-type WfmOrdersResponse = WfmOrdersResult | WfmMutationError;
-type WfmContractsResponse = WfmContractsResult | WfmMutationError;
-type WfmSearchResponse = WfmSearchItem[] | WfmMutationError;
-type WfmLookupItemResponse = WfmLookupItem | WfmMutationError;
-type WfmStatusResponse = WfmStatusResult | WfmMutationError;
-type WfmSessionResponse = WfmSession;
-type WfmSignInResponse = WfmSession;
-type WfmMeResponse = WfmUserProfile | WfmMutationError | null;
-
 import type {
-  CreateRivenAuctionPayload,
   DecodedRiven,
-  UpdateRivenAuctionPayload,
   VeiledRivenEntry,
   VeiledRivenGroup,
 } from "../../config/shared/rivenTypes.js";
-export type {
-  CreateRivenAuctionPayload,
-  DecodedRiven,
-  UpdateRivenAuctionPayload,
-  VeiledRivenEntry,
-  VeiledRivenGroup,
-};
+export type { DecodedRiven, VeiledRivenEntry, VeiledRivenGroup };
 
 import type {
-  RivenGoodRoll,
   RivenGoodRollAttribute,
   RivenGoodRollGroup,
 } from "../../config/shared/rivenGoodRolls.js";
 export type { RivenGoodRollAttribute, RivenGoodRollGroup };
 
-import type {
-  OverlayEditState,
-  OverlayEditCommand,
-  OverlayFieldStyle,
-  OverlayLayoutKind,
-  OverlayDescriptor,
-} from "../../config/shared/overlayLayout.js";
-
 export interface MarketAlertStatusPayload extends MarketAlertEngineStatus {
   /** Rule id to cooldown end, epoch ms; a rule not in cooldown is absent. */
   cooldowns: Record<string, number>;
-}
-
-export interface IpcInvokeMap {
-  getPersonalProfile: {
-    args: [refresh?: boolean];
-    return: import("../../config/shared/personalProfile.js").PersonalProfileResult;
-  };
-  getNotificationSound: {
-    args: [];
-    return: import("../../config/shared/notificationSound.js").NotificationSoundAsset | null;
-  };
-  saveNotificationSound: {
-    args: [sound: import("../../config/shared/notificationSound.js").NotificationSoundUpload];
-    return: import("../../config/shared/notificationSound.js").NotificationSoundAsset;
-  };
-  resetNotificationSound: { args: []; return: null };
-  getFeedbackContext: {
-    args: [];
-    return: {
-      appVersion: string;
-      platform: string;
-      diagnostics: { osVersion: string; arch: string };
-    };
-  };
-  submitFeedback: {
-    args: [report: import("../../config/shared/feedback.js").FeedbackReport];
-    return: import("../../config/shared/feedback.js").FeedbackResult;
-  };
-  getOverlayPreview: {
-    args: [kind: OverlayLayoutKind];
-    return: {
-      url: string;
-      theme: Record<string, string>;
-      messages: { locale: string; messages: Record<string, string> };
-      defaultFieldStyle: OverlayFieldStyle;
-      descriptor: OverlayDescriptor;
-      canvas: { width: number; height: number };
-      lastReward: import("../../config/shared/rewardPresentation.js").RewardPresentation | null;
-    };
-  };
-  beginOverlayEdit: { args: [kind: OverlayLayoutKind]; return: OverlayEditState };
-  updateOverlayEdit: {
-    args: [sessionId: string, command: OverlayEditCommand];
-    return: OverlayEditState;
-  };
-  endOverlayEdit: { args: [sessionId: string, save: boolean]; return: { ok: true } };
-  getInventory: {
-    args: [];
-    return: RawInventoryData | null;
-  };
-  openInventoryFile: {
-    args: [source: Exclude<InventorySource, "aleca">];
-    return: RawInventoryData | null;
-  };
-  setInventorySource: {
-    args: [source: InventorySource];
-    return: { source: InventorySource };
-  };
-  openAlecaFrameInventoryFile: {
-    args: [];
-    return: RawInventoryData | null;
-  };
-  getInventoryStatus: {
-    args: [];
-    return: InventoryStatus;
-  };
-  exportInventory: {
-    args: [];
-    return: { saved: boolean; path?: string; error?: InventoryExportError };
-  };
-  getItemDatabase: {
-    args: [];
-    return: ItemDbLookup;
-  };
-  getWorldState: {
-    args: [];
-    return: WorldState | null;
-  };
-  getRelicDatabase: {
-    args: [];
-    return: RelicDatabase | null;
-  };
-  getRelicDataInfo: {
-    args: [];
-    return: RelicDataInfo;
-  };
-  getWfmItems: {
-    args: [];
-    return: WfmItemsLookup;
-  };
-  wfmSignIn: {
-    args: [{ email: string; password: string }];
-    return: WfmSignInResponse;
-  };
-  wfmSignOut: {
-    args: [];
-    return: { loggedIn: false };
-  };
-  wfmGetSession: {
-    args: [];
-    return: WfmSessionResponse;
-  };
-  wfmGetOrders: {
-    args: [];
-    return: WfmOrdersResponse;
-  };
-  wfmGetContracts: {
-    args: [query?: WfmContractsQuery];
-    return: WfmContractsResponse;
-  };
-  wfmCreateOrder: {
-    args: [WfmCreateOrderInput];
-    return: WfmOrderResult;
-  };
-  wfmUpdateOrder: {
-    args: [orderId: string, updates: WfmUpdateOrderInput];
-    return: WfmOrderResult;
-  };
-  wfmDeleteOrder: {
-    args: [orderId: string];
-    return: WfmDeleteOrderResult;
-  };
-  wfmCloseOrder: {
-    args: [orderId: string, quantity: number];
-    return: WfmCloseOrderResult;
-  };
-  wfmSetVisible: {
-    args: [orderIds: string[], visible: boolean];
-    return: WfmSetVisibleResult;
-  };
-  wfmSearchItems: {
-    args: [query: string, limit?: number];
-    return: WfmSearchResponse;
-  };
-  wfmLookupItemBySlug: {
-    args: [slug: string];
-    return: WfmLookupItemResponse;
-  };
-  marketStatsHistoryMerge: {
-    args: [slug: string, points: MarketStatPoint[], mode?: MarketStatsMergeMode];
-    return: MarketStatPoint[] | null;
-  };
-  wfmGetMe: {
-    args: [];
-    return: WfmMeResponse;
-  };
-  wfmSetStatus: {
-    args: [status: WfmStatus];
-    return: WfmStatusResponse;
-  };
-  wfmPresenceState: {
-    args: [];
-    return: WfmPresenceState;
-  };
-  getMasteryProgress: {
-    args: [];
-    return: MasteryData | null;
-  };
-  getCodexScans: {
-    args: [force?: boolean];
-    return: CodexScansResult;
-  };
-  getOverlayPlacementLayout: {
-    args: [];
-    return: {
-      area: { width: number; height: number };
-      overlays: Record<
-        OverlayWindowKey,
-        { x: number; y: number; width: number; height: number; scale: number }
-      >;
-    };
-  };
-  saveOverlayPlacement: {
-    args: [key: OverlayWindowKey, pos: { xFrac: number; yFrac: number }];
-    return: { ok: boolean };
-  };
-  saveOverlayScale: {
-    args: [key: OverlayWindowKey, scale: number];
-    return: { ok: boolean };
-  };
-  searchDrops: {
-    args: [query: string, mode: DropSearchMode];
-    return: DropSearchResult;
-  };
-  dropSourcesForItem: {
-    args: [name: string];
-    return: DropRow[];
-  };
-  getSpawnNodes: {
-    args: [];
-    return: SpawnNode[];
-  };
-  getLinuxDisplay: {
-    args: [];
-    return: LinuxDisplayInfo;
-  };
-  setLinuxDisplay: {
-    args: [preference: DisplayPreference];
-    return: LinuxDisplayInfo;
-  };
-  setUpLinuxCapture: {
-    args: [];
-    return: LinuxCaptureSetupResult;
-  };
-  getOverlaySettings: {
-    args: [];
-    return: OverlaySettings;
-  };
-  getDetectedWarframeUiScale: {
-    args: [];
-    return: number | null;
-  };
-  setOverlaySettings: {
-    args: [settings: Partial<OverlaySettings>];
-    return: OverlaySettings;
-  };
-  confirmDialog: {
-    args: [payload: { message: string; okLabel: string; cancelLabel: string }];
-    return: boolean;
-  };
-  checkForAppUpdates: {
-    args: [];
-    return: AppUpdateCheckResult;
-  };
-  getAppUpdateState: {
-    args: [];
-    return: AppUpdateState;
-  };
-  downloadAppUpdate: {
-    args: [];
-    return: AppUpdateCheckResult;
-  };
-  installDownloadedUpdate: {
-    args: [];
-    return: AppUpdateInstallResult;
-  };
-  getAppRuntimeInfo: {
-    args: [];
-    return: AppRuntimeInfo;
-  };
-  openScanDebugFolder: {
-    args: [];
-    return: { ok: boolean };
-  };
-  openLogFolder: {
-    args: [];
-    return: { ok: boolean };
-  };
-  getNotificationHistory: {
-    args: [];
-    return: NotificationEntry[];
-  };
-  clearNotificationHistory: {
-    args: [];
-    return: void;
-  };
-  removeNotificationEntry: {
-    args: [string];
-    return: boolean;
-  };
-  sendTestNotification: {
-    args: [];
-    return: boolean;
-  };
-  getNotificationChannels: {
-    args: [];
-    return: NotificationChannelState;
-  };
-  setNotificationWebhook: {
-    args: [channel: WebhookChannel, url: string];
-    return: SetWebhookResult;
-  };
-  clearNotificationWebhook: {
-    args: [channel: WebhookChannel];
-    return: NotificationChannelState;
-  };
-  setNotificationSourceChannels: {
-    args: [source: NotificationSource, toggles: SourceChannelToggles];
-    return: NotificationChannelState;
-  };
-  setNotificationGameGate: {
-    args: [enabled: boolean];
-    return: NotificationChannelState;
-  };
-  setNotificationDiscordPing: {
-    args: [userId: string];
-    return: SetDiscordPingResult;
-  };
-  testNotificationWebhook: {
-    args: [channel: WebhookChannel];
-    return: WebhookTestResult;
-  };
-  marketAlertsList: {
-    args: [];
-    return: MarketAlertListResult;
-  };
-  marketAlertsSave: {
-    args: [payload: MarketAlertSavePayload];
-    return: MarketAlertSaveResult;
-  };
-  marketAlertsDelete: {
-    args: [id: string];
-    return: { ok: boolean };
-  };
-  marketAlertsSetEnabled: {
-    args: [id: string, enabled: boolean];
-    return: { ok: boolean };
-  };
-  marketAlertsClearCooldown: {
-    args: [id: string];
-    return: { ok: boolean };
-  };
-  marketAlertsGetHits: {
-    args: [];
-    return: MarketAlertHit[];
-  };
-  marketAlertsClearHits: {
-    args: [];
-    return: { ok: boolean };
-  };
-  marketAlertsStatus: {
-    args: [];
-    return: MarketAlertStatusPayload;
-  };
-  marketAlertsTestFire: {
-    args: [id: string];
-    return: MarketAlertTestFireResult;
-  };
-  marketAlertsExport: {
-    args: [ids?: string[]];
-    return: string;
-  };
-  marketAlertsImport: {
-    args: [text: string];
-    return: MarketAlertImportOutcome;
-  };
-  ledgerQuery: {
-    args: [query: LedgerQuery];
-    return: LedgerPage;
-  };
-  ledgerImportPreview: {
-    args: [];
-    return: LedgerImportPreview | { error: LedgerErrorCode };
-  };
-  ledgerImportApply: {
-    args: [batchId: string];
-    return: LedgerImportResult;
-  };
-  ledgerUpdateEvent: {
-    args: [id: string, patch: LedgerEventPatch];
-    return: { ok: boolean; error?: LedgerErrorCode };
-  };
-  ledgerExport: {
-    args: [options: LedgerExportOptions];
-    return: { saved: boolean; path?: string; error?: LedgerErrorCode };
-  };
-  popoutOpen: {
-    args: [target: PopoutTarget | PopoutView, options?: PopoutOpenOptions];
-    return: { ok: boolean };
-  };
-  popoutSetPinned: {
-    args: [pinned: boolean];
-    return: { ok: boolean };
-  };
-  popoutList: {
-    args: [];
-    return: PopoutWindowInfo[];
-  };
-  popoutClose: {
-    args: [target: PopoutTarget];
-    return: { ok: boolean };
-  };
-  popoutCloseAll: {
-    args: [];
-    return: { ok: boolean; closed: number };
-  };
-  loadRankedHotset: {
-    args: [];
-    return: Record<string, unknown> | null;
-  };
-  saveRankedHotset: {
-    args: [data: Record<string, unknown>];
-    return: { ok: boolean };
-  };
-  loadSnapshotCache: {
-    args: [];
-    return: Record<string, unknown> | null;
-  };
-  saveSnapshotCache: {
-    args: [data: Record<string, unknown>];
-    return: { ok: boolean };
-  };
-  getStatsHistory: {
-    args: [];
-    return: DailyStatEntry[];
-  };
-  getStatsCurrentSession: {
-    args: [];
-    return: SessionStats;
-  };
-  importStatsHistory: {
-    args: [raw: unknown[]];
-    return: { ok: boolean; count: number };
-  };
-  getTradeLog: {
-    args: [];
-    return: TradeEvent[];
-  };
-  importTradeLog: {
-    args: [events: TradeEvent[]];
-    return: { ok: boolean; count: number };
-  };
-  getHelperStatus: {
-    args: [];
-    return: HelperStatus;
-  };
-  runHelperNow: {
-    args: [];
-    return: { ok: boolean };
-  };
-  downloadHelper: {
-    args: [];
-    return: { ok: boolean; error?: string };
-  };
-  getBuildAdvisorGuns: {
-    args: [];
-    return: OwnedGunSummary[];
-  };
-  reviewGunBuild: {
-    args: [
-      weaponType: string,
-      assumeConditionals: boolean,
-      faction: AdvisorFaction | null,
-      respectCapacity: boolean,
-    ];
-    return: GunBuildReview;
-  };
-  getRivens: {
-    args: [];
-    return: RivenResult;
-  };
-  getRivenWeaponNames: {
-    args: [rivenMarketOnly?: boolean];
-    return: string[];
-  };
-  getRivenStatOptions: {
-    args: [];
-    return: RivenStatOption[];
-  };
-  searchRivenAuctions: {
-    args: [weaponName: string, positiveWfmNames: string[], negativeWfmNames: string[]];
-    return: WfmRivenListing[];
-  };
-  getRivenBestAttributes: {
-    args: [weaponName: string];
-    return: RivenGoodRollsResult;
-  };
-  getRivenGoodRoll: {
-    args: [weaponName: string];
-    return: RivenGoodRoll | null;
-  };
-  refreshRivenGoodRolls: {
-    args: [weaponName: string];
-    return: RivenGoodRollsResult;
-  };
-  gradeRivenContracts: {
-    args: [contracts: RivenContractGradeRequest[]];
-    return: RivenContractGradesResult;
-  };
-  createRivenAuction: {
-    args: [payload: CreateRivenAuctionPayload];
-    return: { ok: boolean; auctionId?: string; error?: string };
-  };
-  deleteRivenAuction: {
-    args: [payload: { auctionId: string }];
-    return: { ok: boolean; error?: string };
-  };
-  updateRivenAuction: {
-    args: [payload: UpdateRivenAuctionPayload];
-    return: { ok: boolean; auctionId?: string; error?: string };
-  };
-  getArbiRuns: {
-    args: [];
-    return: ArbiRunsPayload;
-  };
-  refreshArbiRuns: {
-    args: [];
-    return: ArbiRunsPayload;
-  };
-  setArbiRunVitus: {
-    args: [id: string, vitus: number | null];
-    return: ArbiRunRecord | null;
-  };
-  setArbiRunTags: {
-    args: [id: string, tags: string[]];
-    return: ArbiRunRecord | null;
-  };
-  setArbiRunNotes: {
-    args: [id: string, notes: string];
-    return: ArbiRunRecord | null;
-  };
-  deleteArbiRun: {
-    args: [id: string];
-    return: { ok: boolean };
-  };
-  deleteArbiRunLog: {
-    args: [id: string];
-    return: ArbiRunRecord | null;
-  };
-  exportArbiRunLog: {
-    args: [id: string];
-    return: { ok: boolean };
-  };
-  importArbiLog: {
-    args: [];
-    return: ArbiImportResult;
-  };
-  saveArbiRunImage: {
-    args: [id: string, png: Uint8Array];
-    return: { ok: boolean };
-  };
-  showArbiRunLogInFolder: {
-    args: [id: string];
-    return: { ok: boolean };
-  };
-  getPtRuns: {
-    args: [];
-    return: PtRunsPayload;
-  };
-  getMissionRewards: {
-    args: [];
-    return: MissionRewardsPayload;
-  };
-  getMissionRewardsPage: {
-    args: [query: MissionRewardsQuery];
-    return: MissionRewardsPage | null;
-  };
-  refreshPtRuns: {
-    args: [];
-    return: PtRunsPayload;
-  };
-  setPtRunTags: {
-    args: [id: string, tags: string[]];
-    return: PtRunRecord | null;
-  };
-  setPtRunNotes: {
-    args: [id: string, notes: string];
-    return: PtRunRecord | null;
-  };
-  deletePtRun: {
-    args: [id: string];
-    return: { ok: boolean };
-  };
-  deletePtRunLog: {
-    args: [id: string];
-    return: PtRunRecord | null;
-  };
-  exportPtRunLog: {
-    args: [id: string];
-    return: { ok: boolean };
-  };
-  importPtLog: {
-    args: [];
-    return: PtImportResult;
-  };
-  showPtRunLogInFolder: {
-    args: [id: string];
-    return: { ok: boolean };
-  };
-  workbenchGetState: {
-    args: [];
-    return: WorkbenchState;
-  };
-  workbenchPreviewPlan: {
-    args: [plan: WorkbenchPlan, safety: WorkbenchSafetySnapshot];
-    return: WorkbenchPlanValidation | WfmMutationError;
-  };
-  workbenchExecutePlan: {
-    args: [plan: WorkbenchPlan, safety: WorkbenchSafetySnapshot];
-    return: WorkbenchExecuteResult;
-  };
-  workbenchCancelRun: {
-    args: [];
-    return: WorkbenchState;
-  };
-  workbenchAcknowledgeOverride: {
-    args: [ack: WorkbenchOverrideAck];
-    return: WorkbenchState | WfmMutationError;
-  };
-  workbenchReconcile: {
-    args: [];
-    return: WorkbenchReviewReport | WfmMutationError;
-  };
-  workbenchResolveReview: {
-    args: [payload: WorkbenchResolveReviewPayload];
-    return: WorkbenchState | WfmMutationError;
-  };
-  getArbiSchedule: {
-    args: [];
-    return: ArbiSchedulePayload;
-  };
-  setArbiScheduleOccurrence: {
-    args: [key: string, enabled: boolean];
-    return: ArbiScheduleAlerts | null;
-  };
-  setArbiScheduleFavorite: {
-    args: [nodeId: string, enabled: boolean];
-    return: ArbiScheduleAlerts | null;
-  };
-  setArbiScheduleLead: {
-    args: [minutes: number];
-    return: ArbiScheduleAlerts | null;
-  };
-  notifySelectionComplete: {
-    args: [payload: { name: string; owned: number }];
-    return: boolean;
-  };
 }
 
 export interface RivenStatOption {
@@ -844,13 +117,13 @@ export interface RivenBestAttributes {
   negatives: string[];
 }
 
-interface RivenGoodRollsResult {
+export interface RivenGoodRollsResult {
   attributes: RivenBestAttributes | null;
   /** ISO time the 44bananas sheet was last fetched; null when never cached. */
   updatedAt: string | null;
 }
 
-interface RivenResult {
+export interface RivenResult {
   unveiled: DecodedRiven[];
   veiled: VeiledRivenEntry[];
   veiledUnseen: VeiledRivenGroup[];
@@ -873,7 +146,7 @@ export interface RivenContractGrade {
   stats: { grade: string; rollFloat: number }[];
 }
 
-interface RivenContractGradesResult {
+export interface RivenContractGradesResult {
   /** One entry per request, aligned by index. */
   grades: (RivenContractGrade | null)[];
   /** False while the community sheet is still loading: the roll grades stand,
@@ -914,32 +187,20 @@ import type { TradeMatchPayload } from "../../config/shared/tradeMatch.js";
 export type { DailyStatEntry, SessionStats, TradeEvent, TradeItem, TradeType };
 
 import type {
-  ArbiImportResult,
   ArbiMissionType,
   ArbiRunRecord,
   ArbiRunStats,
-  ArbiRunsPayload,
 } from "../../config/shared/arbiTypes.js";
 export type { ArbiMissionType, ArbiRunRecord, ArbiRunStats };
 import type {
   ArbiScheduleAlerts,
   ArbiScheduleEntry,
-  ArbiSchedulePayload,
 } from "../../config/shared/arbiScheduleTypes.js";
 export type { ArbiScheduleAlerts, ArbiScheduleEntry };
 
-import type {
-  PtImportResult,
-  PtRunRecord,
-  PtRunsPayload,
-} from "../../config/shared/profitTakerTypes.js";
+import type { PtRunRecord } from "../../config/shared/profitTakerTypes.js";
 export type { PtRunRecord };
 
-import type {
-  MissionRewardsPage,
-  MissionRewardsPayload,
-  MissionRewardsQuery,
-} from "../../config/shared/missionRewardsTypes.js";
 export type {
   MissionRewardItem,
   MissionRewardSummaryView,
@@ -950,44 +211,7 @@ export type {
 
 type WfmTradeMatchEvent = TradeMatchPayload;
 
-interface TradeRecordedEvent {
+export interface TradeRecordedEvent {
   trade: TradeEvent;
   wfmMatches: WfmTradeMatchEvent[];
-}
-
-export interface IpcEventMap {
-  "overlay-edit-state": OverlayEditState;
-  "inventory-updated": RawInventoryData | null;
-  "profile-account-changed": void;
-  "inventory-status-updated": InventoryStatus;
-  "item-db-updated": undefined;
-  "relic-db-updated": undefined;
-  "app-update-status": AppUpdateState;
-  "wfm:notification": WfmNotification;
-  "helper-download-progress": HelperDownloadProgress;
-  "trade-recorded": TradeRecordedEvent;
-  "world-state-fetch-error": string;
-  "arbi-run-saved": ArbiRunRecord;
-  "arbi-open-run": string;
-  "pt-run-saved": PtRunRecord;
-  "mission-rewards-updated": MissionRewardsPayload;
-  "warframe-ui-scale-updated": number | null;
-  "riven-similar-auctions": boolean;
-  "notification-history-added": NotificationEntry;
-  "notification-sound-play": import("../../config/shared/notificationSound.js").NotificationSoundPlayback;
-  "market-alerts:changed": undefined;
-  "workbench-state": WorkbenchState;
-  "popout-state-changed": PopoutWindowInfo[];
-}
-
-export interface IpcSendMap {
-  "window-minimize": [];
-  "window-maximize": [];
-  "window-close": [];
-  "toggle-overlay": [];
-  "simulate-relic-trigger": [];
-  "overlay-theme-updated": [themeVars: Record<string, string>];
-  "game-locale-updated": [locale: string];
-  "overlay:push-relic-filters": [filters: RelicOverlayFilterPush];
-  "open-external": [url: string];
 }
