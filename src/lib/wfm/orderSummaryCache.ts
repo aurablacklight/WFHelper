@@ -6,7 +6,8 @@ import {
 } from "../../../config/shared/numeric.js";
 import { rendererOrderSummaryCacheKey } from "../../../config/shared/wfmCacheKeys.js";
 
-const ORDER_SUMMARY_FRESH_TTL_MS = 24 * 60 * 60 * 1000;
+/** Past this age an entry still displays but is due a refetch. */
+export const ORDER_SUMMARY_FRESH_TTL_MS = 24 * 60 * 60 * 1000;
 const ORDER_SUMMARY_STALE_TTL_MS = 48 * 60 * 60 * 1000;
 
 type CachedOrderSummaryStatus = "ok" | "no_data";
@@ -56,6 +57,31 @@ export function getCachedOrderSummaryState(
   }
 
   return isOrderSummaryFresh(entry) ? entry : null;
+}
+
+export interface CachedOrderSummaryRead {
+  status: CachedOrderSummaryStatus;
+  wts: number | null;
+  wtb: number | null;
+  /** Cache write time; the row's staleness clock. */
+  at: number;
+  fresh: boolean;
+}
+
+/** Rounded values for one slug and rank, stale entries included. */
+export function readCachedOrderSummary(
+  slugInput: string | null | undefined,
+  rank: number,
+): CachedOrderSummaryRead | null {
+  const entry = getCachedOrderSummaryState(slugInput, rank, { allowStale: true });
+  if (!entry) return null;
+  return {
+    status: entry.status,
+    wts: toFiniteNonNegativeInt(entry.wts),
+    wtb: toFiniteNonNegativeInt(entry.wtb),
+    at: entry.timestamp,
+    fresh: isOrderSummaryFresh(entry),
+  };
 }
 
 export function setCachedOrderSummary(

@@ -30,6 +30,13 @@ export function getCachedPriceState(slug: string): CachedPriceEntry | null {
   return entry;
 }
 
+/** The cached median for a price cache key, or null when absent or no-data. */
+export function getCachedMedian(cacheKey: string): number | null {
+  const entry = getCachedPriceState(cacheKey);
+  if (!entry || entry.status !== "ok") return null;
+  return typeof entry.median === "number" && Number.isFinite(entry.median) ? entry.median : null;
+}
+
 export function setCachedPrice(slug: string, median: number): void {
   _prices.set(slug, { status: "ok", median, timestamp: Date.now(), priceBasis: WFM_PRICE_BASIS });
 }
