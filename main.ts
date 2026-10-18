@@ -99,6 +99,7 @@ import * as inventoryIpc from "./ipc/inventoryIpc";
 import * as wfmIpc from "./ipc/wfmIpc";
 import * as overlayIpc from "./ipc/overlayIpc";
 import { destroyOverlayWindows } from "./ipc/overlay/registry";
+import { registerSettingsEffects } from "./ipc/settingsEffects";
 import * as rewardOverlayIpc from "./ipc/rewardOverlayIpc";
 import * as rivenOverlayIpc from "./ipc/rivenOverlayIpc";
 import * as arbiOverlayIpc from "./ipc/arbiOverlayIpc";
@@ -141,7 +142,6 @@ import {
 import * as statsTracker from "./services/statsTracker";
 import * as arbiRunTracker from "./services/arbiRunTracker";
 import * as ptRunTracker from "./services/profitTakerTracker";
-import { setOcrDebugDumpsEnabled } from "./services/rewardScanDebug";
 import * as arbiIpc from "./ipc/arbiIpc";
 import * as profitTakerIpc from "./ipc/profitTakerIpc";
 import * as arbiScheduleIpc from "./ipc/arbiScheduleIpc";
@@ -498,20 +498,10 @@ function initTrackersAndSettings(profileStage: ProfileStage): void {
   statsTracker.loadHistory();
   tradeTracker.loadTradeLog();
   arbiRunTracker.initArbiTracker();
-  arbiRunTracker.setArbiTrackingEnabled(ctx.overlaySettings.arbiTrackingEnabled !== false);
   ptRunTracker.initPtTracker();
-  // One user-facing toggle covers both EE.log run trackers.
-  ptRunTracker.setPtTrackingEnabled(ctx.overlaySettings.arbiTrackingEnabled !== false);
   trayIpc.configureTray(revealMainWindow);
-  if (ctx.overlaySettings.keepRunningOnClose === true) trayIpc.createTray();
-  setOcrDebugDumpsEnabled(ctx.overlaySettings.ocrDebugImagesEnabled !== false);
-  wfmPresence.setOptions({
-    autoIngameEnabled: ctx.overlaySettings.wfmAutoIngameEnabled === true,
-    holdMinutes: ctx.overlaySettings.wfmStatusHoldMinutes,
-    awayIdleEnabled: ctx.overlaySettings.wfmAwayIdleEnabled === true,
-    awayIdleMinutes: ctx.overlaySettings.wfmAwayIdleMinutes,
-    awayWhenClosedEnabled: ctx.overlaySettings.wfmAwayWhenClosedEnabled === true,
-  });
+  // Applied with the loaded settings once the IPC handlers exist, then on each change.
+  registerSettingsEffects(overlayIpc.onOverlaySettingsChanged);
   inventoryIpc.addInventoryListener((data: Record<string, unknown>) => {
     statsTracker.onInventoryData(data);
   });
@@ -734,6 +724,7 @@ void app.whenReady().then(async () => {
   logStartupPaths(profileStage);
   initTrackersAndSettings(profileStage);
   registerIpcHandlers(profileStage);
+  overlayIpc.publishLoadedOverlaySettings();
 
   // The renderer loads while the item DB builds. Its invokes queue until this
   // callback returns and nothing here yields, so no handler sees an unbuilt DB.

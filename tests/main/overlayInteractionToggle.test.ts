@@ -1,5 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  OVERLAY_SAVE_PLACEMENT,
+  OVERLAY_SAVE_SCALE,
   OVERLAY_SET_SETTINGS,
   RIVEN_SET_SIMILAR_AUCTIONS,
   RIVEN_SIMILAR_AUCTIONS,
@@ -27,7 +29,7 @@ const state = vi.hoisted(() => {
     return controller;
   };
   return {
-    toggle: null as ((source?: string) => void) | null,
+    hotkeys: new Map<string, () => void>(),
     reward: pair(),
     planner: pair(),
     rivenVisible: false,
@@ -42,14 +44,16 @@ const state = vi.hoisted(() => {
     rivenGuard: vi.fn(),
     handlerGuards: new Map<string, unknown>(),
     handlers: new Map<string, unknown>(),
-    savedSettings: {} as Record<string, unknown>,
+    lifecycleHeld: null as Promise<void> | null,
   };
 });
 
 vi.mock("electron", () => ({
   app: { on: vi.fn(), getAppPath: () => "D:/app" },
   BrowserWindow: { getAllWindows: () => [], fromWebContents: () => null },
-  screen: {},
+  screen: {
+    getPrimaryDisplay: () => ({ id: 1, workArea: { x: 0, y: 0, width: 1000, height: 500 } }),
+  },
 }));
 vi.mock("../../services/logger", () => ({ withScope: () => ({ info: vi.fn(), warn: vi.fn() }) }));
 vi.mock("../../ipc/overlay/editorIpc", () => ({ registerOverlayEditor: vi.fn() }));
@@ -65,30 +69,14 @@ vi.mock("../../ipc/ipcSecurity", () => ({
   onAuthorized: vi.fn(),
 }));
 vi.mock("../../ipc/overlayI18n", () => ({ overlayMessages: vi.fn() }));
-vi.mock("../../ipc/trayIpc", () => ({
-  createTray: vi.fn(),
-  destroyTray: vi.fn(),
-  isTrayActive: vi.fn(),
-}));
 vi.mock("../../ipc/hotkeyRegistry", () => ({
   disposeAppHotkeys: vi.fn(),
-  overlayHotkeyBackend: {},
-}));
-vi.mock("../../ipc/overlay/settings", () => ({
-  createOverlaySettingsController: (options: {
-    onToggleOverlayInteractionMode: (source?: string) => void;
-  }) => {
-    state.toggle = options.onToggleOverlayInteractionMode;
-    return {
-      saveOverlaySettings: vi.fn(),
-      loadOverlaySettings: () => state.savedSettings,
-      registerOverlayHotkey: vi.fn(),
-      setOverlaySettingsWithLifecycle: async (next: Record<string, unknown>) => {
-        const ctx = (await import("../../ipc/context")).default;
-        ctx.overlaySettings = { ...ctx.overlaySettings, ...next };
-        return ctx.overlaySettings;
-      },
-    };
+  overlayHotkeyBackend: {
+    register: (accelerator: string, callback: () => void) => {
+      state.hotkeys.set(accelerator, callback);
+      return true;
+    },
+    unregister: (accelerator: string) => state.hotkeys.delete(accelerator),
   },
 }));
 vi.mock("../../ipc/overlay/windows", () => ({ moveOverlayWindowBy: vi.fn() }));
@@ -96,11 +84,20 @@ vi.mock("../../ipc/popoutIpc", () => ({ broadcastToRenderers: state.broadcast })
 vi.mock("../../ipc/overlay/zOrder", () => ({ returnFocusToWarframe: state.returnFocus }));
 vi.mock("../../ipc/tradeNotificationIpc", () => ({ hideTradeNotification: vi.fn() }));
 vi.mock("../../services/atomicFile", () => ({ writeFileAtomicSync: vi.fn() }));
-vi.mock("../../services/userDataPath", () => ({ userDataPath: () => "D:/fixture/overlay.json" }));
+vi.mock("../../services/userDataPath", async () => {
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = path.join(os.tmpdir(), `wfh-overlay-toggle-${process.pid}`);
+  return { userDataPath: (name: string) => path.join(dir, name) };
+});
 vi.mock("../../services/acceleratorVk", () => ({ matchesAcceleratorInput: vi.fn() }));
 vi.mock("../../services/eeLogPath", () => ({ resolveWarframeUiScale: vi.fn() }));
 vi.mock("../../services/warframeStatus", () => ({ captureWarframeFocus: state.captureFocus }));
-vi.mock("../../services/warframeLifecycle", () => ({ configureWarframeLifecycle: vi.fn() }));
+vi.mock("../../services/warframeLifecycle", () => ({
+  configureWarframeLifecycle: async () => {
+    await state.lifecycleHeld;
+  },
+}));
 vi.mock("../../ipc/rivenOverlayIpc", () => ({
   isAnyRivenWindowVisible: () => state.rivenVisible,
   restoreRivenAfterUnfocus: () => {
@@ -120,13 +117,6 @@ vi.mock("../../ipc/rewardOverlayIpc", () => ({
   register: vi.fn(),
 }));
 vi.mock("../../ipc/arbiOverlayIpc", () => ({ register: vi.fn() }));
-vi.mock("../../services/arbiRunTracker", () => ({ setArbiTrackingEnabled: vi.fn() }));
-vi.mock("../../services/profitTakerTracker", () => ({ setPtTrackingEnabled: vi.fn() }));
-vi.mock("../../services/missionRewards", () => ({ setTrackingEnabled: vi.fn() }));
-vi.mock("../../services/wfmPresence", () => ({ setOptions: vi.fn() }));
-vi.mock("../../services/inventorySync", () => ({ apply: vi.fn() }));
-vi.mock("../../services/rewardScanDebug", () => ({ setOcrDebugDumpsEnabled: vi.fn() }));
-vi.mock("../../ipc/mainWindowZoom", () => ({ applyMainWindowZoom: vi.fn() }));
 vi.mock("../../ipc/context", () => ({
   default: {
     overlayWindow: { isDestroyed: () => false },
@@ -138,9 +128,28 @@ vi.mock("../../ipc/context", () => ({
   },
 }));
 
+import fs from "node:fs";
+import path from "node:path";
+
 import ctx from "../../ipc/context";
 import { registerOverlay } from "../../ipc/overlay/registry";
-import { loadOverlaySettings, register, toggleOverlayInteractionMode } from "../../ipc/overlayIpc";
+import {
+  OVERLAY_SETTINGS_DEFAULTS,
+  OVERLAY_SETTINGS_FILE_NAME,
+} from "../../config/runtime/overlaySettings";
+import { userDataPath } from "../../services/userDataPath";
+import {
+  loadOverlaySettings,
+  register,
+  setOverlayHotkeysActive,
+  toggleOverlayInteractionMode,
+} from "../../ipc/overlayIpc";
+
+function writeSavedSettings(settings: Record<string, unknown>): void {
+  const file = userDataPath(OVERLAY_SETTINGS_FILE_NAME);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(settings));
+}
 
 // One riven panel open: the registry hands it the setting overlayIpc shares.
 registerOverlay("rivenLeft", {
@@ -170,7 +179,7 @@ describe("overlay interaction hotkey", () => {
   it("focuses the overlays it turns interactive, and only then", () => {
     state.reward.visible = true;
 
-    state.toggle!("hotkey");
+    toggleOverlayInteractionMode("hotkey");
 
     expect(ctx.overlayInteractiveMode).toBe(true);
     expect(state.captureFocus).toHaveBeenCalledOnce();
@@ -184,7 +193,7 @@ describe("overlay interaction hotkey", () => {
     state.reward.visible = true;
     ctx.overlayInteractiveMode = true;
 
-    state.toggle!("hotkey");
+    toggleOverlayInteractionMode("hotkey");
 
     expect(ctx.overlayInteractiveMode).toBe(false);
     expect(state.returnFocus).toHaveBeenCalledOnce();
@@ -196,7 +205,7 @@ describe("overlay interaction hotkey", () => {
   it("a riven-only toggle leaves the hidden reward pair passive", () => {
     state.rivenVisible = true;
 
-    state.toggle!("hotkey");
+    toggleOverlayInteractionMode("hotkey");
 
     expect(state.setRivenInteractiveMode).toHaveBeenCalledWith(true);
     expect(ctx.overlayInteractiveMode).toBe(false);
@@ -208,7 +217,7 @@ describe("overlay interaction hotkey", () => {
   it("brings riven panels hidden for unfocus back interactive", () => {
     state.rivenHiddenByUnfocus = true;
 
-    state.toggle!("hotkey");
+    toggleOverlayInteractionMode("hotkey");
 
     expect(state.rivenVisible).toBe(true);
     expect(state.setRivenInteractiveMode).toHaveBeenCalledWith(true);
@@ -225,7 +234,18 @@ describe("overlay interaction hotkey", () => {
 
 describe("overlay interaction launch flag", () => {
   it("runs the same toggle as the interaction hotkey", () => {
-    expect(toggleOverlayInteractionMode).toBe(state.toggle);
+    ctx.overlaySettings = {
+      ...OVERLAY_SETTINGS_DEFAULTS,
+      interactionHotkeyEnabled: true,
+      interactionHotkey: "Control+Tab",
+    } as unknown as typeof ctx.overlaySettings;
+    state.reward.visible = true;
+    setOverlayHotkeysActive(true);
+
+    state.hotkeys.get("Control+Tab")!();
+
+    expect(ctx.overlayInteractiveMode).toBe(true);
+    setOverlayHotkeysActive(false);
   });
 
   it("reports the mode the overlays on screen switched to", () => {
@@ -296,7 +316,7 @@ describe("linux interactive overlay setting", () => {
   // The planner is pre-warmed before any overlay opens; a stale passive mode there
   // makes X11 rebuild it on its first show.
   it("starts in the saved mode before the first overlay opens", () => {
-    state.savedSettings = { linuxOverlaysInteractive: true };
+    writeSavedSettings({ linuxOverlaysInteractive: true });
 
     loadOverlaySettings();
     expect(ctx.overlayInteractiveMode).toBe(true);
@@ -304,7 +324,7 @@ describe("linux interactive overlay setting", () => {
     setPlatform("win32");
     loadOverlaySettings();
     expect(ctx.overlayInteractiveMode).toBe(false);
-    state.savedSettings = {};
+    writeSavedSettings({});
   });
 
   it("does nothing on Windows", async () => {
@@ -370,11 +390,101 @@ describe("riven similar auctions setting", () => {
     await setFromOverlay({}, false);
     state.rivenPanelSend.mockClear();
     state.broadcast.mockClear();
-    // A full-form save queued before the flip still carries the old value.
-    ctx.overlaySettings = { rivenSimilarAuctionsShown: true } as typeof ctx.overlaySettings;
 
+    // A full form saved after the flip still carries the value the form loaded with.
     await saveSettings({}, { rivenSimilarAuctionsShown: true });
     expect(state.rivenPanelSend).toHaveBeenCalledExactlyOnceWith(RIVEN_SIMILAR_AUCTIONS, true);
     expect(state.broadcast).toHaveBeenCalledExactlyOnceWith(RIVEN_SIMILAR_AUCTIONS, true);
+  });
+
+  // Each queued write announces its own before and after, so no module-level copy of
+  // what the windows were last sent is needed.
+  it("pushes a flip that lands while a stale form save is still in flight", async () => {
+    let release: () => void = () => {};
+    state.lifecycleHeld = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const form = saveSettings(
+      {},
+      { warframeLifecycleEnabled: true, rivenSimilarAuctionsShown: true },
+    );
+    const flip = setFromOverlay({}, false);
+    await Promise.resolve();
+    expect(state.rivenPanelSend).not.toHaveBeenCalled();
+
+    release();
+    await Promise.all([form, flip]);
+    state.lifecycleHeld = null;
+
+    expect(ctx.overlaySettings.rivenSimilarAuctionsShown).toBe(false);
+    expect(state.rivenPanelSend).toHaveBeenCalledExactlyOnceWith(RIVEN_SIMILAR_AUCTIONS, false);
+    expect(state.broadcast).toHaveBeenCalledExactlyOnceWith(RIVEN_SIMILAR_AUCTIONS, false);
+  });
+});
+
+// Placement and scale saves used to assign ctx directly, skipping the queue and the normaliser.
+describe("overlay placement writes", () => {
+  type PlacementHandler = (event: unknown, key: unknown, value: unknown) => Promise<unknown>;
+  let savePlacement: PlacementHandler;
+  let saveScale: PlacementHandler;
+  let saveSettings: SettingsHandler;
+
+  beforeAll(() => {
+    if (!state.handlers.has(OVERLAY_SET_SETTINGS)) register();
+    savePlacement = state.handlers.get(OVERLAY_SAVE_PLACEMENT) as PlacementHandler;
+    saveScale = state.handlers.get(OVERLAY_SAVE_SCALE) as PlacementHandler;
+    saveSettings = state.handlers.get(OVERLAY_SET_SETTINGS) as SettingsHandler;
+  });
+
+  beforeEach(() => {
+    ctx.overlaySettings = { ...OVERLAY_SETTINGS_DEFAULTS } as unknown as typeof ctx.overlaySettings;
+  });
+
+  it("waits for a settings save in flight, then lands on top of it", async () => {
+    let release: () => void = () => {};
+    state.lifecycleHeld = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const form = saveSettings({}, { warframeLifecycleEnabled: true });
+    const placed = savePlacement({}, "planner", { xFrac: 0.5, yFrac: 0.25 });
+    await Promise.resolve();
+    expect(ctx.overlaySettings.overlayWindowBounds?.planner).toBeUndefined();
+
+    release();
+    await expect(placed).resolves.toEqual({ ok: true });
+    await form;
+    state.lifecycleHeld = null;
+
+    expect(ctx.overlaySettings.warframeLifecycleEnabled).toBe(true);
+    expect(ctx.overlaySettings.overlayWindowBounds?.planner).toEqual({
+      x: 500,
+      y: 125,
+      displayId: "1",
+    });
+  });
+
+  it("keeps a saved size when only the position moves", async () => {
+    await saveSettings(
+      {},
+      { overlayWindowBounds: { reward: { x: 1, y: 2, width: 900, height: 200 } } },
+    );
+
+    await savePlacement({}, "reward", { xFrac: 0.1, yFrac: 0.2 });
+
+    expect(ctx.overlaySettings.overlayWindowBounds?.reward).toEqual({
+      x: 100,
+      y: 100,
+      displayId: "1",
+      width: 900,
+      height: 200,
+    });
+  });
+
+  it("saves a scale normalised, and only for a window that scales", async () => {
+    await expect(saveScale({}, "rivenRight", 1.234)).resolves.toEqual({ ok: true });
+    expect(ctx.overlaySettings.overlayWindowScales).toEqual({ rivenRight: 1.23 });
+
+    await expect(saveScale({}, "tradeNotification", 1.2)).resolves.toEqual({ ok: false });
+    expect(ctx.overlaySettings.overlayWindowScales).toEqual({ rivenRight: 1.23 });
   });
 });

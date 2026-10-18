@@ -14,6 +14,7 @@ import {
 import { OVERLAY_EDIT_STATE } from "../../config/shared/ipcChannels";
 import { asRecord } from "../../config/shared/objectValidation";
 import type { RewardPresentation } from "../../config/shared/rewardPresentation";
+import type { OverlaySettings } from "../../config/runtime/overlaySettings";
 
 const UNDO_LIMIT = 100;
 
@@ -39,7 +40,8 @@ function validCardOffsets(kind: OverlayLayoutKind, value: unknown): boolean {
 
 export function createOverlayEditor(options: {
   ctx: typeof context;
-  persist: () => boolean;
+  /** Saves the layout through the settings module; throws, leaving settings alone, on failure. */
+  persist: (patch: Partial<OverlaySettings>) => unknown;
   applySaved: (state: OverlayEditState) => void;
   getLastReward?: () => RewardPresentation | null;
 }) {
@@ -90,23 +92,22 @@ export function createOverlayEditor(options: {
     if (!session) return;
     const current = session;
     if (save) {
-      const previous = ctx.overlaySettings;
+      const saved = ctx.overlaySettings;
       const kind = current.state.kind;
       const layout = normalizeOverlayLayout(kind, current.state.layout);
-      ctx.overlaySettings = {
-        ...previous,
-        ...(kind === "reward"
-          ? { rewardLayout: layout }
-          : { overlayLayouts: { ...previous.overlayLayouts, [kind]: layout } }),
-        ...(kind === "tradeNotification"
-          ? {}
-          : {
-              overlayWindowScales: { ...previous.overlayWindowScales, [kind]: current.state.scale },
-            }),
-      };
-      if (!options.persist()) {
-        ctx.overlaySettings = previous;
-        throw new Error("Could not save overlay layout");
+      try {
+        options.persist({
+          ...(kind === "reward"
+            ? { rewardLayout: layout }
+            : { overlayLayouts: { ...saved.overlayLayouts, [kind]: layout } }),
+          ...(kind === "tradeNotification"
+            ? {}
+            : {
+                overlayWindowScales: { ...saved.overlayWindowScales, [kind]: current.state.scale },
+              }),
+        });
+      } catch (error) {
+        throw new Error("Could not save overlay layout", { cause: error });
       }
     }
     current.owner.removeListener("destroyed", cancel);

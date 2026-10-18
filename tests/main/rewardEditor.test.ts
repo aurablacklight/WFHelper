@@ -37,7 +37,10 @@ function makeEditor() {
     overlayInteractiveMode: false,
     overlayWindow: null,
   } as unknown as Options["ctx"];
-  const persist = vi.fn(() => true);
+  // Stands in for the settings module, which leaves settings alone when a write fails.
+  const persist = vi.fn((patch: Record<string, unknown>) => {
+    ctx.overlaySettings = { ...ctx.overlaySettings, ...patch };
+  });
   const applySaved = vi.fn();
   const editor = createOverlayEditor({ ctx, persist, applySaved });
   return { ctx, persist, applySaved, editor, ...makeOwner() };
@@ -163,14 +166,15 @@ describe("reward overlay edit sessions", () => {
     const original = ctx.overlaySettings;
     const { sessionId } = editor.begin(owner);
     editor.update(sessionId, { type: "field", field: "rarity", patch: { hidden: false } }, owner);
-    persist.mockReturnValue(false);
+    persist.mockImplementationOnce(() => {
+      throw new Error("Could not save overlay settings");
+    });
     expect(() => editor.end(sessionId, true, owner)).toThrow("Could not save");
     expect(ctx.overlaySettings).toBe(original);
     expect(ctx.overlaySettings.rewardLayout?.fields.rarity?.hidden).toBe(true);
     expect(editor.state().sessionId !== null).toBe(true);
     expect(editor.state().layout.fields.rarity?.hidden).toBe(false);
     expect(applySaved).not.toHaveBeenCalled();
-    persist.mockReturnValue(true);
     editor.end(sessionId, true, owner);
     expect(ctx.overlaySettings.rewardLayout?.fields.rarity?.hidden).toBe(false);
     expect(applySaved).toHaveBeenCalledOnce();
@@ -493,12 +497,13 @@ describe("shared overlay edit sessions", () => {
     const { sessionId } = editor.begin(owner, "planner");
     editor.update(sessionId, { type: "field", field: "relicName", patch: { scale: 2 } }, owner);
     editor.update(sessionId, { type: "scale", scale: 1.4 }, owner);
-    persist.mockReturnValue(false);
+    persist.mockImplementationOnce(() => {
+      throw new Error("Could not save overlay settings");
+    });
     expect(() => editor.end(sessionId, true, owner)).toThrow("Could not save");
     expect(ctx.overlaySettings).toBe(previous);
     expect(editor.state().sessionId).toBe(sessionId);
     expect(applySaved).not.toHaveBeenCalled();
-    persist.mockReturnValue(true);
     editor.end(sessionId, true, owner);
     expect(ctx.overlaySettings.overlayLayouts?.planner?.fields.relicName?.scale).toBe(2);
     expect(ctx.overlaySettings.overlayWindowScales?.planner).toBe(1.4);

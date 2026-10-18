@@ -34,7 +34,9 @@ import {
   type RewardPresentation,
 } from "../../config/shared/rewardPresentation";
 
-export function registerOverlayEditor(persist: () => boolean) {
+export function registerOverlayEditor(
+  persist: Parameters<typeof createOverlayEditor>[0]["persist"],
+) {
   let lastReward: RewardPresentation | null = null;
   onAuthorized(RELIC_REWARD_PRESENTATION, assertOverlayRendererSender, (event, raw: unknown) => {
     if (overlayKindOf(event.sender.id) !== "reward") return;
