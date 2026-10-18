@@ -46,3 +46,17 @@ task truly needs it closed, and say why when it does.
 - `git push --no-verify` is an accepted bypass when the hook gets in the way.
 - Launching the app with Warframe open reads the session token from game
   memory. Mention it before anything that increases that exposure.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in the fork's GitHub Issues (`gh ... -R aurablacklight/WFHelper`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
