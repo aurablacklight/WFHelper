@@ -35,6 +35,18 @@ import {
   type RowShape,
 } from "./rowPriceState.js";
 
+const FIELD_NAMES = [
+  "price",
+  "priceR0",
+  "priceRmax",
+  "ordersR0",
+  "ordersRmax",
+  "ducats",
+  "icon",
+] as const satisfies readonly (keyof ReturnType<typeof planRowFetch> & keyof RowPriceState)[];
+
+const ICON_RETRY_MS = PRICE_NO_DATA_RETRY_MS;
+
 type PriceFetch =
   | { status: "ok"; median: number; slug: string }
   | { status: "no_data" | "transient"; slug: string | null };
@@ -257,15 +269,29 @@ export async function hydrateRow(
               : { ...fieldOk<number | null>(ducats, now), attempts: 0 };
         }
         if (plan.icon) {
+          // No meta can be a dropped request, so try again later instead of for good.
           next.icon = meta
             ? fieldOk({ thumb: meta.thumb || null, icon: meta.icon || null }, now)
-            : fieldNoData({ thumb: null, icon: null }, now, null);
+            : fieldFailed({ thumb: null, icon: null }, now + ICON_RETRY_MS);
         }
       }
     }
   } catch (error) {
     console.warn("[Inventory] row hydration failed:", error);
-    return state;
+    // Keep what already landed; planned fields the error cut off cool down as transient.
+    const retryAt = now + PRICE_TRANSIENT_RETRY_MS;
+    for (const name of FIELD_NAMES) {
+      if (plan[name] && next[name] === state[name]) {
+        (next as unknown as Record<string, unknown>)[name] = {
+          ...state[name],
+          status: "failed",
+          retryAt,
+        };
+      }
+    }
+    if (plan.ducats && next.ducats.status === "failed") {
+      next.ducats = { ...next.ducats, attempts: next.ducats.attempts + 1 };
+    }
   }
 
   next.slug = slug;

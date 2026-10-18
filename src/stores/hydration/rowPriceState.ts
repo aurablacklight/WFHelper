@@ -302,7 +302,7 @@ export function planRowFetch(
     ordersR0: orders && isOrdersDue(state.ordersR0, now),
     ordersRmax: orders && isOrdersDue(state.ordersRmax, now),
     ducats: intent.ducats && isDucatsDue(state.ducats, shape),
-    icon: shape.needsIcon && state.icon.status === "untried",
+    icon: shape.needsIcon && isDue(state.icon, now),
   };
 }
 

@@ -373,3 +373,40 @@ describe("hydrateRow", () => {
     expect(fetchWfmItemMetaBySlugMock).toHaveBeenCalledWith("ambassador_stock", expect.anything());
   });
 });
+
+describe("hydrateRow when a request breaks", () => {
+  it("keeps what landed and cools down the fields the error cut off", async () => {
+    const now = 1_000_000;
+    fetchPriceBySlugMock.mockImplementation(async (slug: string, options: { rank?: number }) => {
+      if (options?.rank === 3) throw new Error("socket hang up");
+      return { status: "ok", slug, median: 12, timestamp: now };
+    });
+
+    const state = await hydrateRow(makeItem(), {}, visible, undefined, now);
+
+    expect(state.price).toMatchObject({ status: "ok", value: 12 });
+    expect(state.priceR0).toMatchObject({ status: "ok", value: 12 });
+    expect(state.priceRmax).toMatchObject({
+      status: "failed",
+      retryAt: now + PRICE_TRANSIENT_RETRY_MS,
+    });
+
+    fetchPriceBySlugMock.mockClear();
+    const tooSoon = await hydrateRow(makeItem(), {}, visible, state, now + 1_000);
+    expect(fetchPriceBySlugMock).not.toHaveBeenCalled();
+    expect(tooSoon).toBe(state);
+  });
+
+  it("tries a missing icon again after a cooldown instead of giving up", async () => {
+    const now = 2_000_000;
+    priceAtRank({ "0": 10, "3": 40 });
+    fetchWfmItemMetaBySlugMock.mockResolvedValueOnce(null);
+
+    const first = await hydrateRow(makeItem(), {}, visible, undefined, now);
+    expect(first.icon.status).toBe("failed");
+
+    fetchWfmItemMetaBySlugMock.mockResolvedValueOnce({ thumb: "t.png", icon: "i.png" });
+    const later = await hydrateRow(makeItem(), {}, visible, first, now + PRICE_NO_DATA_RETRY_MS);
+    expect(later.icon).toMatchObject({ status: "ok", value: { thumb: "t.png", icon: "i.png" } });
+  });
+});
