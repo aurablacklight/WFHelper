@@ -22,7 +22,7 @@ import { MAX_DUCAT_RETRY_PER_ITEM } from "./hydrationTypes.js";
  * visible, never whether the network may be used.
  */
 
-export type FieldStatus = "untried" | "ok" | "no_data" | "failed";
+type FieldStatus = "untried" | "ok" | "no_data" | "failed";
 
 export interface FieldState<T> {
   value: T;
@@ -38,7 +38,7 @@ export interface OrderPair {
   wtb: number | null;
 }
 
-export interface IconPair {
+interface IconPair {
   thumb: string | null;
   icon: string | null;
 }
@@ -66,7 +66,7 @@ export interface RowIntent extends RowFields {
   mode: "visible" | "background";
 }
 
-export interface RowFetchPlan {
+interface RowFetchPlan {
   price: boolean;
   priceR0: boolean;
   priceRmax: boolean;
@@ -77,7 +77,7 @@ export interface RowFetchPlan {
 }
 
 /** What the view-model reads for one row: values only, cache-backed. */
-export interface RowPrices {
+interface RowPrices {
   platinum: number | null;
   platinumR0: number | null;
   platinumRmax: number | null;
@@ -90,7 +90,7 @@ export interface RowPrices {
   icon: string | null;
 }
 
-export function fieldUntried<T>(value: T): FieldState<T> {
+function fieldUntried<T>(value: T): FieldState<T> {
   return { value, status: "untried", at: null, retryAt: null };
 }
 

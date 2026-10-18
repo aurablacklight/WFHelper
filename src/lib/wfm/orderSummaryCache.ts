@@ -59,7 +59,7 @@ export function getCachedOrderSummaryState(
   return isOrderSummaryFresh(entry) ? entry : null;
 }
 
-export interface CachedOrderSummaryRead {
+interface CachedOrderSummaryRead {
   status: CachedOrderSummaryStatus;
   wts: number | null;
   wtb: number | null;
