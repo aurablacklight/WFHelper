@@ -7,6 +7,7 @@ import { isInfestedMechPart } from "../config/shared/componentNames";
 import { fallbackNameFromUniqueName, sanitizeDisplayName } from "../config/shared/displayName";
 import { wfcdDropOrderKey } from "../config/shared/dropOrder";
 import { normalizeErrorMessage } from "../config/shared/errors";
+import { settleItemKind, type ItemKindFields } from "../config/shared/itemKind";
 import { normalizeDucats } from "../config/shared/numeric";
 import { normalizeWfmSlug } from "../config/shared/wfm";
 import type { MarketAcquisition } from "../config/shared/marketAcquisition";
@@ -176,7 +177,7 @@ function buildComponentAliasUniqueNames(uniqueName: string = ""): string[] {
   return [];
 }
 
-interface ItemEntry extends MarketAcquisition {
+interface ItemEntry extends MarketAcquisition, ItemKindFields {
   name: string;
   nameIsFallback?: true;
   category: string;
@@ -372,9 +373,9 @@ function loadPublicExportPlus(): number {
   }
 }
 
-// Items only @wfcd/items has (Corufell Prime, as of export-plus 0.6.12) keep its
-// archwing weapon categories, which the mastery list does not recognise. Give them
-// the export's category and product type so they count and display as Archwing.
+// Items only @wfcd/items has (Corufell Prime, as of export-plus 0.6.12) and their
+// parts get the export's category and product type for archwing weapons, so a
+// productCategory reader sees SpaceMelee and not @wfcd's plain "Melee".
 const WFCD_ARCHWING_PRODUCT: Record<string, string> = {
   "Arch-Gun": "SpaceGuns",
   "Arch-Melee": "SpaceMelee",
@@ -506,7 +507,7 @@ function loadWfcdItems(): number {
             wfcdItemsByUniqueName[comp.uniqueName] = componentEntry;
 
             if (!existingComponent) {
-              itemsByUniqueName[comp.uniqueName] = componentEntry;
+              itemsByUniqueName[comp.uniqueName] = withExportCategory(componentEntry);
               wfcdComponentNewCount++;
             } else {
               if (
@@ -860,6 +861,39 @@ function inheritBlueprintDisplayFromResults(): void {
   if (icons > 0) log.info(`[ItemDB] Inherited ${icons} blueprint icons from their crafted item`);
 }
 
+// Parts take their gear's kind: a component its parent's, a blueprint its
+// product's. Runs after every loader so componentOf and recipe links are final.
+function assignItemKinds(): void {
+  const settled = new Map<string, ItemKindFields>();
+  const visiting = new Set<string>();
+
+  function settle(uniqueName: string): ItemKindFields {
+    const done = settled.get(uniqueName);
+    if (done) return done;
+    const entry = itemsByUniqueName[uniqueName];
+    if (!entry || visiting.has(uniqueName)) return {};
+    visiting.add(uniqueName);
+    const parentUn = entry.componentOf ?? resultTypeByBlueprint[uniqueName];
+    const inherited = parentUn && parentUn !== uniqueName ? settle(parentUn) : null;
+    visiting.delete(uniqueName);
+    const fields = settleItemKind(uniqueName, entry, inherited);
+    settled.set(uniqueName, fields);
+    return fields;
+  }
+
+  const counts = new Map<string, number>();
+  for (const [uniqueName, entry] of Object.entries(itemsByUniqueName)) {
+    const fields = settle(uniqueName);
+    delete entry.kind;
+    delete entry.kindPart;
+    delete entry.modularPart;
+    Object.assign(entry, fields);
+    if (fields.kind) counts.set(fields.kind, (counts.get(fields.kind) || 0) + 1);
+  }
+  const summary = [...counts].map(([kind, count]) => `${kind} ${count}`).join(", ");
+  log.info(`[ItemDB] Kinds: ${summary}`);
+}
+
 // Bundled sentinel weapons have no relic drops for WFCD to derive vaulting from.
 function inheritSentinelWeaponVaulting(): void {
   for (const [weapon, sentinel] of sentinelWeapons) {
@@ -915,6 +949,7 @@ export function buildDatabase(): void {
   applyMechPartTradability();
   linkBlueprintsToResults();
   inheritBlueprintDisplayFromResults();
+  assignItemKinds();
   applyAcquisitionSources();
   resolveAllImages();
 
@@ -1119,6 +1154,9 @@ export function getRendererLookup(): Record<string, RendererItemEntry> {
       ...(localizing ? localizedPair(key, item.nameKey, item.name) : { name: item.name }),
       ...(item.nameIsFallback ? { nameIsFallback: true as const } : {}),
       category: item.category,
+      ...(item.kind ? { kind: item.kind } : {}),
+      ...(item.kindPart ? { kindPart: true as const } : {}),
+      ...(item.modularPart ? { modularPart: true as const } : {}),
       imageUrl: item.imageUrl,
       ...(hasCardArt(item.imageUrl) ? { cardArt: true } : {}),
       isPrime: item.isPrime,
