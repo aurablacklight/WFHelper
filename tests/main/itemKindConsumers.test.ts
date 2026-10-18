@@ -44,7 +44,7 @@ const ROWS: Row[] = [
     "Warframes",
     "Warframe",
     "warframes",
-    3000,
+    6000,
   ),
   row(
     "Citrine Prime Chassis Blueprint (wfcd)",
@@ -69,7 +69,7 @@ const ROWS: Row[] = [
     "/Lotus/Types/Recipes/Weapons/WeaponParts/BratonPrimeBarrel",
     null,
     "Primary",
-    "default",
+    "primary",
     null,
   ),
   row(
@@ -119,7 +119,7 @@ const ROWS: Row[] = [
     "/Lotus/Types/Recipes/ArchwingRecipes/PrimeArchwing/PrimeArchwingWingsBlueprint",
     null,
     "Archwing",
-    "default",
+    "archwing",
     null,
   ),
   row(
@@ -146,6 +146,15 @@ const ROWS: Row[] = [
     "archwing",
     3000,
   ),
+  // DE exports the plain Corufell as productCategory "Melee".
+  row(
+    "Corufell",
+    "/Lotus/Weapons/Tenno/Archwing/Melee/ExaltedArchScythe/ExaltedAWScytheWeapon",
+    "Archwing",
+    "Archwing",
+    "archwing",
+    3000,
+  ),
   row(
     "Corufell Prime (wfcd)",
     "/Lotus/Weapons/Tenno/Archwing/Melee/PrimeCorufell/PrimeCorufellScytheWeapon",
@@ -159,7 +168,7 @@ const ROWS: Row[] = [
     "/Lotus/Types/Recipes/Weapons/WeaponParts/CorufellPrimeHandle",
     null,
     "Archwing",
-    "melee",
+    "archwing",
     null,
   ),
   // Companions
@@ -176,7 +185,7 @@ const ROWS: Row[] = [
     "/Lotus/Types/Recipes/Weapons/WeaponParts/PrimeCarrierCerebrum",
     null,
     "Companion",
-    "default",
+    "companions",
     null,
   ),
   row(
@@ -192,15 +201,15 @@ const ROWS: Row[] = [
     "/Lotus/Types/Game/CatbrowPet/CheshireCatbrowPetPowerSuit",
     "Companions",
     "Companion",
-    "default",
+    "companions",
     6000,
   ),
   row(
     "Venari",
     "/Lotus/Powersuits/Khora/Kavat/KhoraKavatPowerSuit",
     "Companions",
-    "Warframe",
-    "default",
+    "Companion",
+    "companions",
     6000,
   ),
   row(
@@ -208,7 +217,7 @@ const ROWS: Row[] = [
     "/Lotus/Types/Friendly/Pets/ZanukaPets/ZanukaPetParts/ZanukaPetPartHeadB",
     "Companions",
     "Companion",
-    "default",
+    "companions",
     6000,
   ),
   // Modular gear: DE exports every part as productCategory "Pistols".

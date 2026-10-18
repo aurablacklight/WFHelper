@@ -21,7 +21,7 @@ describe("mastery category overrides", () => {
 
     expect(bhaira).toBeTruthy();
     expect(bhaira?.category).toBe("Companions");
-    expect(bhaira?.debugReason).toContain("cat:override:pets");
+    expect(bhaira?.debugReason).toContain("kind:companion;");
   });
 
   it("places K-Drive boards under Misc instead of Secondary", () => {
@@ -29,7 +29,7 @@ describe("mastery category overrides", () => {
 
     expect(badBaby).toBeTruthy();
     expect(badBaby?.category).toBe("Misc");
-    expect(badBaby?.debugReason).toContain("cat:override:k-drive");
+    expect(badBaby?.debugReason).toContain("kind:k-drive;");
   });
 
   it("tags K-Drive boards with searchable k-drive keywords", () => {
@@ -57,7 +57,7 @@ describe("mastery category overrides", () => {
     for (const name of zawNames) {
       const item = allMasterable.find((entry) => entry.name === name);
       expect(item?.category).toBe("Melee");
-      expect(item?.debugReason).toContain("cat:override:zaw-strike");
+      expect(item?.debugReason).toContain("kind:melee;");
     }
   });
 });
