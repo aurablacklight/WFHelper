@@ -1,7 +1,6 @@
 import { writable } from "svelte/store";
 
-import { normalizeWfmSlug } from "../../config/shared/wfm.js";
-import type { InventoryBaseItem, ItemMetrics, MetricNeeds } from "../lib/inventoryMarket.js";
+import type { InventoryBaseItem } from "../lib/inventoryMarket.js";
 import type { WfmItemsLookup } from "../types/ipc.js";
 
 import type { HydrationTask, InventoryHydrationController } from "./hydration/hydrationTypes.js";
@@ -11,111 +10,64 @@ import {
   METRIC_FLUSH_BUSY_MS,
   METRIC_FLUSH_MS,
 } from "./hydration/hydrationTypes.js";
+import { hydrateRow } from "./hydration/hydrateRow.js";
 import {
-  resolvePriceRank,
-  resolveRankedMaxRank,
-  priceRetryKey,
-  itemPriceRank,
-  orderRetryKey,
-  isPriceSettled,
-  hasRankPairCoverage,
-} from "./hydration/hydrationHelpers.js";
-import {
-  hasCachedRankPair,
-  hasFreshOrderSummaryPair,
-  getCachedMedian,
-  getCachedRankOrderSummary,
-} from "./hydration/hydrationCacheHelpers.js";
-import {
-  canRetryMissingDucats,
-  hydrateItemMetrics,
-  type HydrationContext,
-} from "./hydration/hydrateItemMetrics.js";
-import { isRankedGroup } from "../../config/shared/numeric.js";
-import { rendererPriceCacheKey } from "../../config/shared/wfmCacheKeys.js";
+  emptyRowState,
+  planHasWork,
+  planRowFetch,
+  refreshFromCache,
+  type RowIntent,
+  type RowPriceState,
+} from "./hydration/rowPriceState.js";
 
 export function createInventoryHydrationController(): InventoryHydrationController {
-  const metricsByKeyStore = writable<Record<string, ItemMetrics>>({});
-  let metricsByKey: Record<string, ItemMetrics> = {};
-  const pendingMetricPatches = new Map<string, ItemMetrics>();
-  let metricFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  const rowsByKeyStore = writable<Record<string, RowPriceState>>({});
+  let rowsByKey: Record<string, RowPriceState> = {};
+  const pendingPatches = new Map<string, RowPriceState>();
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const pendingMetricKeys = new Set<string>();
-  const queuedMetricKeys = new Set<string>();
+  const pendingKeys = new Set<string>();
+  const queuedKeys = new Set<string>();
   let hydrationQueue: HydrationTask[] = [];
   let hydrationRunning = false;
   let isMounted = true;
-  const missingDucatRetryCountByKey = new Map<string, number>();
-  const priceTransientRetryAtByKey = new Map<string, number>();
-  const orderTransientRetryAtByKey = new Map<string, number>();
 
-  const flushPendingMetricPatches = (): void => {
-    if (metricFlushTimer) {
-      clearTimeout(metricFlushTimer);
-      metricFlushTimer = null;
-    }
-    if (pendingMetricPatches.size === 0) return;
+  const getRow = (key: string): RowPriceState | undefined =>
+    pendingPatches.get(key) ?? rowsByKey[key];
 
-    const nextMetrics = { ...metricsByKey };
-    for (const [patchKey, patchMetric] of pendingMetricPatches) {
-      nextMetrics[patchKey] = patchMetric;
+  const flushPendingPatches = (): void => {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
     }
-    pendingMetricPatches.clear();
-    metricsByKey = nextMetrics;
-    metricsByKeyStore.set(metricsByKey);
+    if (pendingPatches.size === 0) return;
+
+    const nextRows = { ...rowsByKey };
+    for (const [key, row] of pendingPatches) {
+      nextRows[key] = row;
+    }
+    pendingPatches.clear();
+    rowsByKey = nextRows;
+    rowsByKeyStore.set(rowsByKey);
   };
 
-  const ctx: HydrationContext = {
-    getMetric: (key) => metricsByKey[key],
-
-    hasPriceRetryCooldown(key) {
-      const retryAt = priceTransientRetryAtByKey.get(key);
-      return typeof retryAt === "number" && retryAt > Date.now();
-    },
-    setPriceRetryCooldown(key, delayMs) {
-      priceTransientRetryAtByKey.set(key, Date.now() + delayMs);
-    },
-    clearPriceRetryCooldown(key) {
-      priceTransientRetryAtByKey.delete(key);
-    },
-
-    hasOrderRetryCooldown(key) {
-      const retryAt = orderTransientRetryAtByKey.get(key);
-      return typeof retryAt === "number" && retryAt > Date.now();
-    },
-    setOrderRetryCooldown(key, delayMs) {
-      orderTransientRetryAtByKey.set(key, Date.now() + delayMs);
-    },
-    clearOrderRetryCooldown(key) {
-      orderTransientRetryAtByKey.delete(key);
-    },
-
-    getMissingDucatRetryCount(key) {
-      return missingDucatRetryCountByKey.get(key) || 0;
-    },
-    incrementMissingDucatRetryCount(key) {
-      missingDucatRetryCountByKey.set(key, (missingDucatRetryCountByKey.get(key) || 0) + 1);
-    },
-    clearMissingDucatRetryCount(key) {
-      missingDucatRetryCountByKey.delete(key);
-    },
-
-    queueMetricPatch(key, metric) {
-      pendingMetricPatches.set(key, metric);
-
-      if (metricFlushTimer) return;
-
-      const delayMs = hydrationQueue.length > 0 ? METRIC_FLUSH_BUSY_MS : METRIC_FLUSH_MS;
-      metricFlushTimer = setTimeout(flushPendingMetricPatches, delayMs);
-    },
-
-    markPending(key) {
-      pendingMetricKeys.add(key);
-    },
-    clearPending(key) {
-      pendingMetricKeys.delete(key);
-    },
+  const queuePatch = (key: string, row: RowPriceState): void => {
+    pendingPatches.set(key, row);
+    if (flushTimer) return;
+    const delayMs = hydrationQueue.length > 0 ? METRIC_FLUSH_BUSY_MS : METRIC_FLUSH_MS;
+    flushTimer = setTimeout(flushPendingPatches, delayMs);
   };
+
+  async function runTask(task: HydrationTask): Promise<void> {
+    pendingKeys.add(task.key);
+    try {
+      const before = getRow(task.key);
+      const after = await hydrateRow(task.item, task.lookup, task.intent, before);
+      if (after !== before) queuePatch(task.key, after);
+    } finally {
+      pendingKeys.delete(task.key);
+    }
+  }
 
   async function runHydrationPump(): Promise<void> {
     if (hydrationRunning) return;
@@ -127,10 +79,9 @@ export function createInventoryHydrationController(): InventoryHydrationControll
 
         const pendingTasks: Promise<void>[] = [];
         for (const task of batch) {
-          queuedMetricKeys.delete(task.key);
-
+          queuedKeys.delete(task.key);
           if (!isMounted) break;
-          pendingTasks.push(hydrateItemMetrics(ctx, task.item, task.lookup, task.needs));
+          pendingTasks.push(runTask(task));
         }
 
         if (pendingTasks.length > 0) {
@@ -144,118 +95,35 @@ export function createInventoryHydrationController(): InventoryHydrationControll
       if (isMounted && hydrationQueue.length > 0) {
         void runHydrationPump();
       } else {
-        flushPendingMetricPatches();
+        flushPendingPatches();
       }
     }
   }
 
-  function queueTasks(
-    items: InventoryBaseItem[],
-    lookup: WfmItemsLookup,
-    needs: MetricNeeds,
-  ): void {
+  function enqueue(items: InventoryBaseItem[], lookup: WfmItemsLookup, intent: RowIntent): void {
+    const now = Date.now();
+    const promotions: Array<[string, RowPriceState]> = [];
     let appended = false;
 
     for (const item of items) {
       const key = item.internalName;
-      if (pendingMetricKeys.has(key) || queuedMetricKeys.has(key)) continue;
+      if (pendingKeys.has(key) || queuedKeys.has(key)) continue;
 
-      const existing = metricsByKey[key];
-      const retryMissingDucats = canRetryMissingDucats(ctx, key, item, existing);
-      const requestedRank = resolvePriceRank(item);
-      const retryKey = priceRetryKey(key, requestedRank);
-      const existingPriceRank = itemPriceRank(existing);
-      const rankMismatch = needs.price && requestedRank !== existingPriceRank;
-      const needsIcon = isRankedGroup(item.inventoryGroup);
-      const iconReady = Boolean(item.marketThumb) || existing?.hasMeta === true;
-      const rankPairCovered = hasRankPairCoverage(existing, item, needs);
-      const cachedRankPairCovered = hasCachedRankPair(item);
-      const rankedMaxRank = resolveRankedMaxRank(item);
-      const existingSlug = normalizeWfmSlug(existing?.slug || item.marketSlug);
-      const staleOrderSummaryPair =
-        needs.orders &&
-        isRankedGroup(item.inventoryGroup) &&
-        item.tradable === true &&
-        rankedMaxRank != null &&
-        existingSlug != null &&
-        !hasFreshOrderSummaryPair(existingSlug, rankedMaxRank);
-      const allowNetworkFetch = needs.network === true;
-      const ordersRetryBlocked =
-        needs.orders &&
-        isRankedGroup(item.inventoryGroup) &&
-        item.tradable === true &&
-        rankedMaxRank != null &&
-        (!allowNetworkFetch ||
-          (ctx.hasOrderRetryCooldown(orderRetryKey(key, 0)) &&
-            ctx.hasOrderRetryCooldown(orderRetryKey(key, rankedMaxRank))));
+      // Snapshot data lands synchronously so cards never wait on the pump for it.
+      const existing = getRow(key);
+      const base = existing ?? emptyRowState(item.marketSlug);
+      const refreshed = refreshFromCache(base, item, now);
+      if (refreshed !== base) promotions.push([key, refreshed]);
 
-      if (needs.price && !rankMismatch && ctx.hasPriceRetryCooldown(retryKey)) {
-        continue;
-      }
+      if (!planHasWork(planRowFetch(refreshed, item, intent, now))) continue;
 
-      if (ordersRetryBlocked) {
-        continue;
-      }
-
-      if (
-        !existing &&
-        needs.price &&
-        cachedRankPairCovered &&
-        (!needs.orders || hasFreshOrderSummaryPair(item.marketSlug, rankedMaxRank ?? 0)) &&
-        (!needs.ducats || isRankedGroup(item.inventoryGroup)) &&
-        (!needsIcon || iconReady)
-      ) {
-        // Promote cached data directly into metricsByKey so the UI reflects
-        // snapshot data immediately without a full hydrateItemMetrics pass.
-        if (isRankedGroup(item.inventoryGroup) && item.marketSlug && rankedMaxRank != null) {
-          const slug = item.marketSlug;
-          const r0 = getCachedMedian(rendererPriceCacheKey(slug, 0));
-          const rmax = getCachedMedian(rendererPriceCacheKey(slug, rankedMaxRank));
-          const ordersR0 = needs.orders ? getCachedRankOrderSummary(slug, 0) : null;
-          const ordersRmax = needs.orders ? getCachedRankOrderSummary(slug, rankedMaxRank) : null;
-          const platinum = requestedRank === rankedMaxRank ? rmax : r0;
-          ctx.queueMetricPatch(key, {
-            platinum,
-            platinumR0: r0,
-            platinumRmax: rmax,
-            hasPriceR0: r0 != null,
-            hasPriceRmax: rmax != null,
-            wtsR0: ordersR0?.wts ?? null,
-            wtbR0: ordersR0?.wtb ?? null,
-            wtsRmax: ordersRmax?.wts ?? null,
-            wtbRmax: ordersRmax?.wtb ?? null,
-            hasOrdersR0: !needs.orders || ordersR0 != null || !allowNetworkFetch,
-            hasOrdersRmax: !needs.orders || ordersRmax != null || !allowNetworkFetch,
-            priceRank: requestedRank,
-            ducats: null,
-            slug,
-            thumb: item.marketThumb ?? null,
-            icon: null,
-            hasPrice: r0 != null || rmax != null,
-            hasDucats: !needs.ducats,
-            hasMeta: Boolean(item.marketThumb),
-          });
-        }
-        continue;
-      }
-
-      if (
-        existing &&
-        (!needs.price ||
-          (!rankMismatch && isPriceSettled(existing, allowNetworkFetch) && rankPairCovered)) &&
-        (!needs.ducats || existing.hasDucats) &&
-        (!needsIcon || iconReady) &&
-        !retryMissingDucats &&
-        !rankMismatch &&
-        (!staleOrderSummaryPair || !allowNetworkFetch)
-      ) {
-        continue;
-      }
-
-      queuedMetricKeys.add(key);
-      hydrationQueue.push({ key, item, lookup, needs });
+      queuedKeys.add(key);
+      hydrationQueue.push({ key, item, lookup, intent });
       appended = true;
     }
+
+    // Queue first so the flush delay sees the drain that is about to start.
+    for (const [key, row] of promotions) queuePatch(key, row);
 
     if (appended) {
       void runHydrationPump();
@@ -263,10 +131,10 @@ export function createInventoryHydrationController(): InventoryHydrationControll
   }
 
   return {
-    metricsByKey: {
-      subscribe: metricsByKeyStore.subscribe,
+    rowsByKey: {
+      subscribe: rowsByKeyStore.subscribe,
     },
-    enqueue: queueTasks,
+    enqueue,
     pause() {
       isMounted = false;
     },

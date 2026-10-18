@@ -90,8 +90,8 @@
     type InventoryBaseItem,
     type InventoryFilterTab,
     type InventoryViewItem,
-    type MetricNeeds,
   } from "../lib/inventoryMarket.js";
+  import type { RowFields } from "../stores/hydration/rowPriceState.js";
   import { buildRelicSearchKeywordIndex, relicGroupForUniqueName } from "../lib/relic.js";
   import { readStorage, writeStorage } from "../lib/persistence.js";
   import { startupPriceCacheReady } from "../lib/startupLoader.js";
@@ -213,7 +213,7 @@
   const inventoryFilters = sharedFilters("inventory");
 
   const hydration = getInventoryHydrationController();
-  const hydrationMetrics = hydration.metricsByKey;
+  const hydrationRows = hydration.rowsByKey;
   let hotsetRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   let hotsetRefreshSignature = "";
   let hotsetRefreshCompletedSignature = "";
@@ -223,7 +223,7 @@
     recordRankedHotsetEntry(item.marketSlug, item.maxRank);
   }
 
-  function prefetchVisibleMetrics(items: InventoryBaseItem[], needs: MetricNeeds): void {
+  function prefetchVisibleMetrics(items: InventoryBaseItem[], needs: RowFields): void {
     const hydrationCandidates = items.filter((item) => shouldHydrateMetrics(item));
     const visible = hydrationCandidates.slice(0, METRIC_VISIBLE_PREFETCH_LIMIT);
     const background = hydrationCandidates.slice(
@@ -232,8 +232,8 @@
     );
 
     // the startup snapshot doesn't cover every slug, so the visible slice may fetch
-    hydration.enqueue(visible, $wfmItems, { ...needs, network: true });
-    hydration.enqueue(background, $wfmItems, { ...needs, ducats: false, orders: false });
+    hydration.enqueue(visible, $wfmItems, { ...needs, mode: "visible" });
+    hydration.enqueue(background, $wfmItems, { mode: "background", ducats: false, orders: false });
   }
 
   function handleFilterSelect(event: CustomEvent<InventoryFilterTab>): void {
@@ -303,10 +303,9 @@
     if (selectedBaseItem && shouldHydrateMetrics(selectedBaseItem)) {
       trackRankedHotset(selectedBaseItem);
       hydration.enqueue([selectedBaseItem], $wfmItems, {
-        price: true,
+        mode: "visible",
         ducats: false,
         orders: true,
-        network: true,
       });
     }
   }
@@ -381,10 +380,9 @@
 
     // Everything mixes ranked and unranked rows, so the item decides, not the tab.
     hydration.enqueue([visibleBaseItem], $wfmItems, {
-      price: true,
+      mode: "visible",
       ducats: false,
       orders: isRankedGroup(visibleBaseItem.inventoryGroup),
-      network: true,
     });
   }
 
@@ -429,10 +427,9 @@
 
       if (queue.length > 0) {
         hydration.enqueue(queue, $wfmItems, {
-          price: true,
+          mode: "visible",
           ducats: false,
           orders: true,
-          network: true,
         });
         log.info(`[Inventory] queued ranked hotset refresh (${queue.length} items)`);
       }
@@ -556,7 +553,7 @@
       orderedSubtypes,
     ),
   ];
-  $: tabItems = buildInventoryViewItems(tabBaseItems, $hydrationMetrics);
+  $: tabItems = buildInventoryViewItems(tabBaseItems, $hydrationRows);
   $: relicSearchKeywordIndex = buildRelicSearchKeywordIndex($relicDb);
   $: searchableTabItems =
     filter !== "relics" && filter !== "everything"
@@ -615,7 +612,7 @@
     orderedSubtypes,
   ).filter((item) => isCountedForValue(item, valueScope));
   // Rebuilt on every metric flush, so the totals below re-walk with it.
-  $: valueInventoryItems = buildInventoryViewItems(valueBaseItems, $hydrationMetrics);
+  $: valueInventoryItems = buildInventoryViewItems(valueBaseItems, $hydrationRows);
   // The platinum floor belongs to the totals, not the prefilter above: base rows
   // carry no median yet, so gating there would drop everything on first paint.
   $: inventoryValueTotals = computeInventoryValueTotals(

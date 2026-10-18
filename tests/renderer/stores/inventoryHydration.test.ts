@@ -1,25 +1,41 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { InventoryBaseItem, MetricNeeds } from "../../../src/lib/inventoryMarket.js";
+import type { InventoryBaseItem } from "../../../src/lib/inventoryMarket.js";
 import type { WfmItemsLookup } from "../../../src/types/ipc.js";
-import type { HydrationContext } from "../../../src/stores/hydration/hydrateItemMetrics.js";
+import type { RowIntent } from "../../../src/stores/hydration/rowPriceState.js";
 
-const hydrateItemMetricsMock = vi.hoisted(() => vi.fn());
+const fetchPriceBySlugMock = vi.hoisted(() => vi.fn());
+const fetchPriceByNameMock = vi.hoisted(() => vi.fn());
+const fetchOrderSummaryBySlugMock = vi.hoisted(() => vi.fn());
+const fetchWfmItemMetaBySlugMock = vi.hoisted(() => vi.fn());
 
-vi.mock("../../../src/stores/hydration/hydrateItemMetrics.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("../../../src/stores/hydration/hydrateItemMetrics.js")>();
-  return {
-    ...actual,
-    hydrateItemMetrics: hydrateItemMetricsMock,
-  };
-});
+vi.mock("../../../src/lib/wfm/wfmPrice.js", () => ({
+  fetchPriceBySlug: fetchPriceBySlugMock,
+  fetchPriceByName: fetchPriceByNameMock,
+}));
 
-vi.mock("../../../src/lib/wfm/wfmPrice.js", () => ({}));
+vi.mock("../../../src/lib/wfm/orderSummaryRemote.js", () => ({
+  fetchOrderSummaryBySlug: fetchOrderSummaryBySlugMock,
+}));
 
-vi.mock("../../../src/lib/wfm/orderBook.js", () => ({}));
+vi.mock("../../../src/lib/wfm/wfmItemMeta.js", () => ({
+  fetchWfmItemMetaBySlug: fetchWfmItemMetaBySlugMock,
+}));
 
-vi.mock("../../../src/lib/wfm/orderSummaryRemote.js", () => ({}));
+import { __test__ as priceCacheTest, setCachedPrice } from "../../../src/lib/wfm/priceCache.js";
+import { clearOrderSummaryCache } from "../../../src/lib/wfm/orderSummaryCache.js";
+import { rendererPriceCacheKey } from "../../../config/shared/wfmCacheKeys.js";
+import { createInventoryHydrationController } from "../../../src/stores/inventoryHydration.js";
+import {
+  HYDRATION_BATCH_SIZE,
+  HYDRATION_TICK_MS,
+  METRIC_FLUSH_BUSY_MS,
+  METRIC_FLUSH_MS,
+} from "../../../src/stores/hydration/hydrationTypes.js";
+
+const visible: RowIntent = { mode: "visible", orders: false, ducats: false };
+const background: RowIntent = { mode: "background", orders: false, ducats: false };
+const lookup: WfmItemsLookup = {};
 
 function makeItem(index: number): InventoryBaseItem {
   return {
@@ -51,80 +67,68 @@ function makeItem(index: number): InventoryBaseItem {
   };
 }
 
+function makeMod(): InventoryBaseItem {
+  return {
+    ...makeItem(99),
+    name: "High Noon",
+    internalName: "/Lotus/Upgrades/Mods/Melee/HighNoon",
+    category: "Mods",
+    categoryLabel: "Mods",
+    inventoryGroup: "mods",
+    maxRank: 3,
+    marketSlug: "high_noon",
+  };
+}
+
+function fetchedSlugs(): string[] {
+  return fetchPriceBySlugMock.mock.calls.map((call) => String(call[0]));
+}
+
 describe("createInventoryHydrationController", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    hydrateItemMetricsMock.mockReset();
+    vi.clearAllMocks();
+    fetchPriceBySlugMock.mockImplementation(async (slug: string) => ({
+      status: "ok",
+      slug,
+      median: 1,
+      timestamp: Date.now(),
+    }));
+    fetchPriceByNameMock.mockResolvedValue(null);
+    fetchOrderSummaryBySlugMock.mockResolvedValue({ status: "not_found" });
+    fetchWfmItemMetaBySlugMock.mockResolvedValue(null);
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    priceCacheTest.clearPriceCache();
+    clearOrderSummaryCache();
   });
 
   it("hydrates queued items in fixed batches and ignores duplicate enqueue attempts", async () => {
-    const { createInventoryHydrationController } =
-      await import("../../../src/stores/inventoryHydration.js");
-    const { HYDRATION_BATCH_SIZE, HYDRATION_TICK_MS } =
-      await import("../../../src/stores/hydration/hydrationTypes.js");
-    const hydratedKeys: string[] = [];
-
-    hydrateItemMetricsMock.mockImplementation(
-      async (ctx: HydrationContext, item: InventoryBaseItem) => {
-        ctx.markPending(item.internalName);
-        hydratedKeys.push(item.internalName);
-        await Promise.resolve();
-        ctx.clearPending(item.internalName);
-      },
-    );
-
     const controller = createInventoryHydrationController();
     const items = Array.from({ length: HYDRATION_BATCH_SIZE * 2 + 1 }, (_, index) =>
       makeItem(index),
     );
-    const lookup: WfmItemsLookup = {};
-    const needs: MetricNeeds = { price: true, ducats: false, orders: false };
 
-    controller.enqueue(items, lookup, needs);
-    controller.enqueue(items, lookup, needs);
+    controller.enqueue(items, lookup, visible);
+    controller.enqueue(items, lookup, visible);
 
-    expect(hydratedKeys).toHaveLength(HYDRATION_BATCH_SIZE);
+    expect(fetchedSlugs()).toHaveLength(HYDRATION_BATCH_SIZE);
 
     await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS);
-
-    expect(hydratedKeys).toHaveLength(HYDRATION_BATCH_SIZE * 2);
+    expect(fetchedSlugs()).toHaveLength(HYDRATION_BATCH_SIZE * 2);
 
     await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS);
-
-    expect(hydratedKeys).toHaveLength(items.length);
-    expect(new Set(hydratedKeys).size).toBe(items.length);
+    expect(fetchedSlugs()).toHaveLength(items.length);
+    expect(new Set(fetchedSlugs()).size).toBe(items.length);
   });
 
-  it("batches metric flushes while the queue drains and flushes the tail on drain", async () => {
-    const { createInventoryHydrationController } =
-      await import("../../../src/stores/inventoryHydration.js");
-    const { HYDRATION_BATCH_SIZE, HYDRATION_TICK_MS, METRIC_FLUSH_MS, METRIC_FLUSH_BUSY_MS } =
-      await import("../../../src/stores/hydration/hydrationTypes.js");
-
-    hydrateItemMetricsMock.mockImplementation(
-      async (ctx: HydrationContext, item: InventoryBaseItem) => {
-        ctx.queueMetricPatch(item.internalName, {
-          platinum: 1,
-          ducats: null,
-          slug: item.marketSlug,
-          thumb: null,
-          icon: null,
-          hasPrice: true,
-          hasDucats: true,
-          hasMeta: true,
-        });
-        await Promise.resolve();
-      },
-    );
-
+  it("batches row flushes while the queue drains and flushes the tail on drain", async () => {
     const controller = createInventoryHydrationController();
     const storeUpdates: number[] = [];
-    const unsubscribe = controller.metricsByKey.subscribe((metrics) => {
-      const size = Object.keys(metrics).length;
+    const unsubscribe = controller.rowsByKey.subscribe((rows) => {
+      const size = Object.keys(rows).length;
       if (size > 0) storeUpdates.push(size);
     });
 
@@ -132,7 +136,7 @@ describe("createInventoryHydrationController", () => {
     const items = Array.from({ length: HYDRATION_BATCH_SIZE * 2 + 1 }, (_, index) =>
       makeItem(index),
     );
-    controller.enqueue(items, {}, { price: true, ducats: false, orders: false });
+    controller.enqueue(items, lookup, visible);
 
     // The idle delay must NOT flush while later batches are still queued.
     await vi.advanceTimersByTimeAsync(METRIC_FLUSH_MS);
@@ -148,40 +152,79 @@ describe("createInventoryHydrationController", () => {
     unsubscribe();
   });
 
-  it("re-queues a row for a network pass after a no-network pass stamped it without a price", async () => {
-    const { createInventoryHydrationController } =
-      await import("../../../src/stores/inventoryHydration.js");
-    const { HYDRATION_TICK_MS, METRIC_FLUSH_MS } =
-      await import("../../../src/stores/hydration/hydrationTypes.js");
-    const passes: Array<boolean | undefined> = [];
-
-    hydrateItemMetricsMock.mockImplementation(
-      async (ctx: HydrationContext, item: InventoryBaseItem, _lookup, needs: MetricNeeds) => {
-        passes.push(needs.network);
-        // What the real no-network pass does for a row the snapshot did not price.
-        ctx.queueMetricPatch(item.internalName, {
-          platinum: null,
-          ducats: null,
-          slug: item.marketSlug,
-          thumb: null,
-          icon: null,
-          hasPrice: true,
-          hasDucats: true,
-          hasMeta: true,
-        });
-        await Promise.resolve();
-      },
-    );
-
+  it("skips a row that is already priced instead of fetching it again", async () => {
     const controller = createInventoryHydrationController();
     const item = makeItem(1);
-    controller.enqueue([item], {}, { price: true, ducats: false, orders: false, network: false });
-    await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS + METRIC_FLUSH_MS);
 
-    // The card scrolls into view: this pass may fetch, so it must not be skipped.
-    controller.enqueue([item], {}, { price: true, ducats: false, orders: false, network: true });
+    controller.enqueue([item], lookup, visible);
+    await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS + METRIC_FLUSH_MS);
+    controller.enqueue([item], lookup, visible);
     await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS);
 
-    expect(passes).toEqual([false, true]);
+    expect(fetchedSlugs()).toEqual(["test_item_1"]);
+  });
+
+  it("fetches on a visible pass after a background pass found nothing for the row", async () => {
+    const controller = createInventoryHydrationController();
+    const item = makeItem(1);
+
+    controller.enqueue([item], lookup, background);
+    await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS + METRIC_FLUSH_MS);
+    expect(fetchedSlugs()).toEqual([]);
+
+    // The card scrolls into view: this pass may fetch, so it must not be skipped.
+    controller.enqueue([item], lookup, visible);
+    await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS);
+    expect(fetchedSlugs()).toEqual(["test_item_1"]);
+  });
+
+  it("promotes snapshot prices synchronously and still fetches the missing max-rank price when visible", async () => {
+    // Bug (a) through the controller: a snapshot with only the rank-0 price
+    // used to leave the max-rank price unfetched for the rest of the session.
+    setCachedPrice(rendererPriceCacheKey("high_noon", 0), 12);
+    const controller = createInventoryHydrationController();
+    const mod = makeMod();
+
+    controller.enqueue([mod], lookup, background);
+    await vi.advanceTimersByTimeAsync(METRIC_FLUSH_MS);
+    let rows: Record<string, unknown> = {};
+    controller.rowsByKey.subscribe((value) => {
+      rows = value;
+    })();
+    expect(rows[mod.internalName]).toMatchObject({ priceR0: { status: "ok", value: 12 } });
+    expect(fetchedSlugs()).toEqual([]);
+
+    controller.enqueue([mod], lookup, { ...visible, orders: true });
+    await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS + METRIC_FLUSH_MS);
+
+    expect(fetchPriceBySlugMock).toHaveBeenCalledWith(
+      "high_noon",
+      expect.objectContaining({ rank: 3 }),
+    );
+    expect(fetchPriceBySlugMock).not.toHaveBeenCalledWith(
+      "high_noon",
+      expect.objectContaining({ rank: 0 }),
+    );
+  });
+
+  it("holds a transiently failed row back until its cooldown has passed", async () => {
+    fetchPriceBySlugMock.mockResolvedValue({
+      status: "transient",
+      slug: "test_item_1",
+      median: null,
+    });
+    const controller = createInventoryHydrationController();
+    const item = makeItem(1);
+
+    controller.enqueue([item], lookup, visible);
+    await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS + METRIC_FLUSH_MS);
+    controller.enqueue([item], lookup, visible);
+    await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS + METRIC_FLUSH_MS);
+    expect(fetchedSlugs()).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    controller.enqueue([item], lookup, visible);
+    await vi.advanceTimersByTimeAsync(HYDRATION_TICK_MS);
+    expect(fetchedSlugs()).toHaveLength(2);
   });
 });
