@@ -100,7 +100,6 @@ export function register(): void {
     readGameInventory: () => readGameInventory(),
     onChange: () => broadcastToRenderers(MISSION_REWARDS_UPDATED, buildPayload()),
   });
-  missionRewards.setTrackingEnabled(ctx.overlaySettings.missionTrackingEnabled === true);
   unsubscribeLines?.();
   unsubscribeLines = addLineListener(onEeLogLine);
   unsubscribeInventory?.();

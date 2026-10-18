@@ -9,9 +9,13 @@ import {
   onAuthorized,
 } from "./ipcSecurity";
 import { overlayMessages } from "./overlayI18n";
-import { createTray, destroyTray } from "./trayIpc";
 import { disposeAppHotkeys, overlayHotkeyBackend } from "./hotkeyRegistry";
-import { createOverlaySettingsController } from "./overlay/settings";
+import {
+  changedOverlaySettingKeys,
+  createOverlaySettingsController,
+  overlaySettingsChanged,
+  type OverlaySettingsChange,
+} from "./overlay/settings";
 import { moveOverlayWindowBy } from "./overlay/windows";
 import { broadcastToRenderers } from "./popoutIpc";
 import { returnFocusToWarframe } from "./overlay/zOrder";
@@ -40,13 +44,6 @@ import { configureWarframeLifecycle } from "../services/warframeLifecycle";
 import * as rivenOverlayIpc from "./rivenOverlayIpc";
 import * as rewardOverlayIpc from "./rewardOverlayIpc";
 import * as arbiOverlayIpc from "./arbiOverlayIpc";
-import * as arbiRunTracker from "../services/arbiRunTracker";
-import * as ptRunTracker from "../services/profitTakerTracker";
-import * as missionRewards from "../services/missionRewards";
-import * as wfmPresence from "../services/wfmPresence";
-import * as inventorySync from "../services/inventorySync";
-import { setOcrDebugDumpsEnabled } from "../services/rewardScanDebug";
-import { applyMainWindowZoom } from "./mainWindowZoom";
 import {
   isArbiSummaryOverlayEnabled,
   isRelicRecommendationOverlayEnabled,
@@ -130,9 +127,9 @@ function setOverlayInteractionMode(enabled: boolean, source = "unknown", focus =
 }
 
 // The player is in Settings, so the overlays change mode without taking focus.
-function applyOverlayInteractionSetting(previousSettings: OverlaySettings): void {
-  const next = overlaysStartInteractive(ctx.overlaySettings, process.platform);
-  if (next === overlaysStartInteractive(previousSettings, process.platform)) return;
+function applyOverlayInteractionSetting({ previous, next: settings }: OverlaySettingsChange): void {
+  const next = overlaysStartInteractive(settings, process.platform);
+  if (next === overlaysStartInteractive(previous, process.platform)) return;
   setOverlayInteractionMode(next, "settings", false);
   rivenOverlayIpc.setRivenInteractiveMode(next, { focus: false });
 }
@@ -264,13 +261,7 @@ function pushOverlayThemeVars(): void {
   broadcastToOverlays(OVERLAY_THEME_VARS, { ...ctx.overlayThemeVars });
 }
 
-// Compared with what the windows were last sent, not with the settings before a
-// save: a riven panel flip can land while an earlier settings save is queued.
-let sharedRivenSimilarAuctions = true;
-
-function shareRivenSimilarAuctions(): void {
-  const shown = ctx.overlaySettings.rivenSimilarAuctionsShown !== false;
-  sharedRivenSimilarAuctions = shown;
+function shareRivenSimilarAuctions(shown: boolean): void {
   for (const kind of RIVEN_KINDS) sendToOverlay(kind, RIVEN_SIMILAR_AUCTIONS, shown);
   broadcastToRenderers(RIVEN_SIMILAR_AUCTIONS, shown);
 }
@@ -300,10 +291,11 @@ const settingsController = createOverlaySettingsController({
   configureWarframeLifecycle,
 });
 
-configureOverlayBoundsPersistence((patch) => {
-  ctx.overlaySettings = { ...ctx.overlaySettings, ...patch(ctx.overlaySettings) };
-  settingsController.saveOverlaySettings();
-});
+configureOverlayBoundsPersistence((patch) =>
+  settingsController
+    .updateOverlaySettings(patch)
+    .catch((error: unknown) => log.warn("[OverlayPlacement] window bounds not saved:", error)),
+);
 
 function onRelicSelectionTrigger(source: string): void {
   rewardOverlayIpc.onRelicSelectionTrigger(
@@ -317,32 +309,80 @@ function onRelicSelectionClose(): void {
   rewardOverlayIpc.onRelicSelectionClose();
 }
 
-function applyOverlayAvailabilitySettings(previousSettings: OverlaySettings): void {
-  if (!isRelicRewardsOverlayEnabled(ctx.overlaySettings)) {
+const AVAILABILITY_KEYS = [
+  "relicRewardsOverlayEnabled",
+  "relicRecommendationOverlayEnabled",
+  "tradeNotificationOverlayEnabled",
+  "rivenOverlayEnabled",
+  "arbiSummaryOverlayEnabled",
+  "tradeRepHotkeyEnabled",
+  "tradeRepHotkey",
+] as const satisfies readonly (keyof OverlaySettings)[];
+
+function applyOverlayAvailabilitySettings(change: OverlaySettingsChange): void {
+  const { previous, next: settings } = change;
+  if (!previous || !overlaySettingsChanged(change, AVAILABILITY_KEYS)) return;
+  if (!isRelicRewardsOverlayEnabled(settings)) {
     rewardOverlayIpc.rewardWindowsController.clearOverlayAutoHideTimer();
     rewardOverlayIpc.rewardWindowsController.hideOverlayWindow();
   }
 
-  if (!isRelicRecommendationOverlayEnabled(ctx.overlaySettings)) {
+  if (!isRelicRecommendationOverlayEnabled(settings)) {
     rewardOverlayIpc.plannerWindowsController.clearOverlayAutoHideTimer();
     rewardOverlayIpc.plannerWindowsController.hideOverlayWindow();
   }
 
   const repSettingsChanged =
-    previousSettings.tradeRepHotkeyEnabled !== ctx.overlaySettings.tradeRepHotkeyEnabled ||
-    previousSettings.tradeRepHotkey !== ctx.overlaySettings.tradeRepHotkey;
-  if (!isTradeNotificationOverlayEnabled(ctx.overlaySettings) || repSettingsChanged) {
+    previous.tradeRepHotkeyEnabled !== settings.tradeRepHotkeyEnabled ||
+    previous.tradeRepHotkey !== settings.tradeRepHotkey;
+  if (!isTradeNotificationOverlayEnabled(settings) || repSettingsChanged) {
     hideTradeNotification();
   }
 
-  if (!isRivenOverlayEnabled(ctx.overlaySettings)) {
+  if (!isRivenOverlayEnabled(settings)) {
     rivenOverlayIpc.onRivenSessionClose();
   }
 
-  if (!isArbiSummaryOverlayEnabled(ctx.overlaySettings)) {
+  if (!isArbiSummaryOverlayEnabled(settings)) {
     arbiOverlayIpc.arbiSummaryWindowsController.hideOverlayWindow();
   }
 }
+
+const HOTKEY_KEYS = [
+  "hotkey",
+  "hotkeyEnabled",
+  "interactionHotkey",
+  "interactionHotkeyEnabled",
+  "rivenRescanHotkey",
+  "rivenRescanHotkeyEnabled",
+] as const satisfies readonly (keyof OverlaySettings)[];
+
+// Written by the overlays themselves, which already sit where these say.
+const OVERLAY_WRITTEN_KEYS: ReadonlySet<keyof OverlaySettings> = new Set([
+  "overlayWindowBounds",
+  "overlayDragHintDismissed",
+  "rivenSimilarAuctionsShown",
+] as const);
+
+function repositionAfterSettingsChange(change: OverlaySettingsChange): void {
+  if (!changedOverlaySettingKeys(change).some((key) => !OVERLAY_WRITTEN_KEYS.has(key))) return;
+  for (const kind of ["reward", "planner", ...RIVEN_KINDS] as const) repositionOverlay(kind);
+}
+
+// Each overlay effect runs once per write that changes what it follows, whoever wrote it.
+settingsController.onOverlaySettingsChanged((change) => {
+  if (overlaySettingsChanged(change, HOTKEY_KEYS)) settingsController.registerOverlayHotkey();
+});
+settingsController.onOverlaySettingsChanged(applyOverlayAvailabilitySettings);
+settingsController.onOverlaySettingsChanged(applyOverlayInteractionSetting);
+settingsController.onOverlaySettingsChanged(repositionAfterSettingsChange);
+settingsController.onOverlaySettingsChanged((change) => {
+  if (!overlaySettingsChanged(change, ["rivenSimilarAuctionsShown"])) return;
+  const shown = change.next.rivenSimilarAuctionsShown !== false;
+  if (shown !== (change.previous?.rivenSimilarAuctionsShown !== false)) {
+    shareRivenSimilarAuctions(shown);
+  }
+});
 
 function moveInteractiveOverlayWindow(sender: WebContents, rawDelta: unknown): void {
   const win = BrowserWindow.fromWebContents(sender);
@@ -363,7 +403,6 @@ function moveInteractiveOverlayWindow(sender: WebContents, rawDelta: unknown): v
 }
 
 function register(): void {
-  sharedRivenSimilarAuctions = ctx.overlaySettings.rivenSimilarAuctionsShown !== false;
   if (process.platform === "win32") {
     // The game-only keyboard hook stops matching once an overlay takes focus.
     const attachInteractionShortcut = (win: BrowserWindow) => {
@@ -384,7 +423,7 @@ function register(): void {
     app.on("browser-window-created", (_event, win) => attachInteractionShortcut(win));
     BrowserWindow.getAllWindows().forEach(attachInteractionShortcut);
   }
-  const overlayEditor = registerOverlayEditor(settingsController.saveOverlaySettings);
+  const overlayEditor = registerOverlayEditor(settingsController.commitOverlaySettings);
   rivenOverlayIpc.register();
   rewardOverlayIpc.register(pushOverlayThemeVars);
   arbiOverlayIpc.register();
@@ -420,40 +459,18 @@ function register(): void {
     OVERLAY_SET_SETTINGS,
     assertMainRendererSender,
     async (_event, nextSettings: unknown) => {
-      const incoming = asRecord(nextSettings);
-      const importsLayouts =
-        incoming && ("rewardLayout" in incoming || "overlayLayouts" in incoming);
+      const incoming = asRecord(nextSettings) ?? {};
+      const importsLayouts = "rewardLayout" in incoming || "overlayLayouts" in incoming;
       if (importsLayouts) overlayEditor.assertIdle();
-      const nextScale = incoming ? clampNumber(incoming.overlayScale, 0.75, 1.5, NaN) : NaN;
-      const scaleChanged =
-        Number.isFinite(nextScale) && nextScale !== ctx.overlaySettings.overlayScale;
-      const previousSettings = ctx.overlaySettings;
-      const settings = await settingsController.setOverlaySettingsWithLifecycle(
-        scaleChanged ? { ...(incoming ?? {}), overlayWindowScales: {} } : nextSettings,
+      const settings = await settingsController.updateOverlaySettings(
+        (current) => {
+          // A new global scale replaces every per-window one.
+          const nextScale = clampNumber(incoming.overlayScale, 0.75, 1.5, NaN);
+          const scaleChanged = Number.isFinite(nextScale) && nextScale !== current.overlayScale;
+          return scaleChanged ? { ...incoming, overlayWindowScales: {} } : incoming;
+        },
         importsLayouts ? () => overlayEditor.assertIdle() : undefined,
       );
-      settingsController.registerOverlayHotkey();
-      applyOverlayAvailabilitySettings(previousSettings);
-      applyOverlayInteractionSetting(previousSettings);
-      arbiRunTracker.setArbiTrackingEnabled(settings.arbiTrackingEnabled !== false);
-      ptRunTracker.setPtTrackingEnabled(settings.arbiTrackingEnabled !== false);
-      missionRewards.setTrackingEnabled(settings.missionTrackingEnabled === true);
-      if (settings.keepRunningOnClose === true) createTray();
-      else destroyTray();
-      setOcrDebugDumpsEnabled(settings.ocrDebugImagesEnabled !== false);
-      inventorySync.apply("settings");
-      wfmPresence.setOptions({
-        autoIngameEnabled: settings.wfmAutoIngameEnabled === true,
-        holdMinutes: settings.wfmStatusHoldMinutes,
-        awayIdleEnabled: settings.wfmAwayIdleEnabled === true,
-        awayIdleMinutes: settings.wfmAwayIdleMinutes,
-        awayWhenClosedEnabled: settings.wfmAwayWhenClosedEnabled === true,
-      });
-      applyMainWindowZoom();
-      for (const kind of ["reward", "planner", ...RIVEN_KINDS] as const) repositionOverlay(kind);
-      if ((settings.rivenSimilarAuctionsShown !== false) !== sharedRivenSimilarAuctions) {
-        shareRivenSimilarAuctions();
-      }
       if (importsLayouts) overlayEditor.refresh();
       return settings;
     },
@@ -464,10 +481,9 @@ function register(): void {
     assertRivenOverlayRendererSender,
     async (_event, shown: unknown) => {
       if (typeof shown !== "boolean") throw new Error("Similar auctions setting must be a boolean");
-      const settings = await settingsController.setOverlaySettingsWithLifecycle({
+      const settings = await settingsController.updateOverlaySettings({
         rivenSimilarAuctionsShown: shown,
       });
-      shareRivenSimilarAuctions();
       return settings.rivenSimilarAuctionsShown;
     },
   );
@@ -526,21 +542,23 @@ function register(): void {
 
       const display = screen.getPrimaryDisplay();
       const area = display.workArea;
-      const bounds = {
-        ...ctx.overlaySettings.overlayWindowBounds?.[key],
+      const position = {
         x: Math.round(area.x + xFrac * area.width),
         y: Math.round(area.y + yFrac * area.height),
         displayId: String(display.id),
       };
-      ctx.overlaySettings = {
-        ...ctx.overlaySettings,
-        overlayWindowBounds: {
-          ...(ctx.overlaySettings.overlayWindowBounds || {}),
-          [key]: bounds,
-        },
-      };
-      settingsController.saveOverlaySettings();
-      log.info(`[OverlayPlacement] saved ${key} -> ${bounds.x},${bounds.y}`);
+      try {
+        await settingsController.updateOverlaySettings((current) => ({
+          overlayWindowBounds: {
+            ...(current.overlayWindowBounds || {}),
+            [key]: { ...current.overlayWindowBounds?.[key], ...position },
+          },
+        }));
+      } catch (error) {
+        log.warn(`[OverlayPlacement] ${key} not saved:`, error);
+        return { ok: false };
+      }
+      log.info(`[OverlayPlacement] saved ${key} -> ${position.x},${position.y}`);
       return { ok: true };
     },
   );
@@ -555,14 +573,17 @@ function register(): void {
       const scale = clampNumber(rawScale, 0.75, 1.5, NaN);
       if (!key || !isScalableOverlayWindow(key) || !Number.isFinite(scale)) return { ok: false };
 
-      ctx.overlaySettings = {
-        ...ctx.overlaySettings,
-        overlayWindowScales: {
-          ...(ctx.overlaySettings.overlayWindowScales || {}),
-          [key]: Number(scale.toFixed(2)),
-        },
-      };
-      settingsController.saveOverlaySettings();
+      try {
+        await settingsController.updateOverlaySettings((current) => ({
+          overlayWindowScales: {
+            ...(current.overlayWindowScales || {}),
+            [key]: Number(scale.toFixed(2)),
+          },
+        }));
+      } catch (error) {
+        log.warn(`[OverlayPlacement] ${key} scale not saved:`, error);
+        return { ok: false };
+      }
 
       repositionOverlay(key);
       log.info(`[OverlayPlacement] scale ${key} -> ${scale.toFixed(2)}`);
@@ -579,6 +600,8 @@ export function loadOverlaySettings(): OverlaySettings {
   return settings;
 }
 export const unregisterOverlayHotkey = settingsController.unregisterOverlayHotkey;
+export const onOverlaySettingsChanged = settingsController.onOverlaySettingsChanged;
+export const publishLoadedOverlaySettings = settingsController.publishLoadedOverlaySettings;
 export const setOverlayHotkeysActive = settingsController.setHotkeysActive;
 
 export function disposeOverlayHotkeys(): void {

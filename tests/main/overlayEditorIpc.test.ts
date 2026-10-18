@@ -78,6 +78,11 @@ function invoke(channel: string, event: IpcMainInvokeEvent, ...args: unknown[]):
   return handler(event, ...args);
 }
 
+// The settings module's synchronous write, minus the normalising.
+function commitSettings(patch: Record<string, unknown>): void {
+  ctx.overlaySettings = { ...ctx.overlaySettings, ...patch };
+}
+
 const reposition = vi.fn<(kind: OverlayKind) => void>();
 const placement = vi.fn<(kind: OverlayKind) => OverlayPlacementRect>();
 
@@ -121,7 +126,7 @@ describe("overlay editor IPC boundaries", () => {
     ctx.mainWindow = main.window;
     ctx.overlayWindow = reward.window;
     ctx.plannerOverlayWindow = planner.window;
-    const persist = vi.fn(() => true);
+    const persist = vi.fn(commitSettings);
     registerOverlayEditor(persist);
     const report = mocks.events.get(RELIC_REWARD_PRESENTATION)!;
     const item = {
@@ -209,7 +214,7 @@ describe("overlay editor IPC boundaries", () => {
     ctx.mainWindow = main.window;
     ctx.overlayWindow = reward.window;
     vi.mocked(reward.window.getSize).mockReturnValue([980, 420]);
-    const persist = vi.fn(() => true);
+    const persist = vi.fn(commitSettings);
     registerOverlayEditor(persist);
     expect(await invoke(OVERLAY_EDIT_PREVIEW, main.event, "reward")).toMatchObject({
       canvas: { width: 980, height: 420 },
@@ -254,7 +259,7 @@ describe("overlay editor IPC boundaries", () => {
     ctx.mainWindow = main.window;
     ctx.plannerOverlayWindow = planner.window;
     ctx.overlayWindow = reward.window;
-    const persist = vi.fn(() => true);
+    const persist = vi.fn(commitSettings);
     registerOverlayEditor(persist);
     const draft = (await invoke(OVERLAY_EDIT_BEGIN, main.event, "planner")) as OverlayEditState;
     await invoke(OVERLAY_EDIT_UPDATE, main.event, draft.sessionId, {
@@ -303,7 +308,7 @@ describe("overlay editor IPC boundaries", () => {
     ctx.rivenOverlayRightWindow = windows[3]!.window;
     ctx.arbiSummaryWindow = windows[4]!.window;
     ctx.tradeNotificationWindow = windows[5]!.window;
-    const persist = vi.fn(() => true);
+    const persist = vi.fn(commitSettings);
     const controls = registerOverlayEditor(persist);
     ctx.overlaySettings.overlayLayouts = Object.fromEntries(
       OVERLAY_LAYOUT_KINDS.map((kind) => [

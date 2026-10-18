@@ -73,6 +73,7 @@ vi.mock("../../services/logger", () => ({
 }));
 
 import * as missionRewardsIpc from "../../ipc/missionRewardsIpc";
+import * as missionRewards from "../../services/missionRewards";
 
 const EOM = "1281.547 Sys [Info]: EOM missionLocationUnlocked=1";
 const LATER_EOM = "1341.547 Sys [Info]: EOM missionLocationUnlocked=1";
@@ -105,6 +106,8 @@ async function registerIpc(): Promise<void> {
   h.readGameInventory.mockReset();
   h.readGameInventory.mockImplementation(async () => freshRead(13));
   missionRewardsIpc.register();
+  // The settings effect main applies once the handlers are registered.
+  missionRewards.setTrackingEnabled(h.context.overlaySettings.missionTrackingEnabled === true);
   await vi.advanceTimersByTimeAsync(0);
   expect(h.readGameInventory).not.toHaveBeenCalled();
 }

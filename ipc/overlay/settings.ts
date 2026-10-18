@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { OVERLAY_LAYOUT_KINDS, normalizeOverlayLayout } from "../../config/shared/overlayLayout";
 import { normalizeNotificationVolume } from "../../config/shared/notificationSound";
 import { normalizeErrorMessage } from "../../config/shared/errors";
@@ -37,6 +39,43 @@ type OverlayCtx = {
 };
 
 type OverlayFs = Pick<typeof import("node:fs"), "existsSync" | "readFileSync">;
+
+/** A write: the fields to change, or a function of the settings it lands on. */
+type OverlaySettingsPatch =
+  | Readonly<Record<string, unknown>>
+  | ((current: OverlaySettings) => Readonly<Record<string, unknown>>);
+
+/** previous is null for the one startup announcement of the loaded settings. */
+export interface OverlaySettingsChange {
+  previous: OverlaySettings | null;
+  next: OverlaySettings;
+}
+
+export type OverlaySettingsListener = (change: OverlaySettingsChange) => void;
+
+/** The keys whose values differ; normalising rebuilds nested values, so compared deeply. */
+export function changedOverlaySettingKeys(
+  change: OverlaySettingsChange,
+): (keyof OverlaySettings)[] {
+  const { previous, next } = change;
+  const keys = new Set([...Object.keys(previous ?? {}), ...Object.keys(next)]);
+  return [...keys].filter(
+    (key) =>
+      !isDeepStrictEqual(
+        (previous as Record<string, unknown> | null)?.[key],
+        (next as unknown as Record<string, unknown>)[key],
+      ),
+  ) as (keyof OverlaySettings)[];
+}
+
+/** True at startup, or when any of the keys differs between previous and next. */
+export function overlaySettingsChanged(
+  change: OverlaySettingsChange,
+  keys: readonly (keyof OverlaySettings)[],
+): boolean {
+  const { previous, next } = change;
+  return previous === null || keys.some((key) => !isDeepStrictEqual(previous[key], next[key]));
+}
 
 type OverlaySettingsControllerOptions = {
   log: Logger;
@@ -476,7 +515,45 @@ export function createOverlaySettingsController(options: OverlaySettingsControll
     else unregisterOverlayHotkey();
   }
 
-  function setOverlaySettings(nextSettings: unknown): OverlaySettings {
+  const changeListeners: Array<{
+    listener: OverlaySettingsListener;
+    atStartup: boolean;
+  }> = [];
+
+  /** Effects run in the order they subscribed; one that throws does not undo the write. */
+  function onOverlaySettingsChanged(
+    listener: OverlaySettingsListener,
+    options: { atStartup?: boolean } = {},
+  ): () => void {
+    const entry = { listener, atStartup: options.atStartup === true };
+    changeListeners.push(entry);
+    return () => {
+      const index = changeListeners.indexOf(entry);
+      if (index >= 0) changeListeners.splice(index, 1);
+    };
+  }
+
+  function publish(change: OverlaySettingsChange): void {
+    for (const { listener, atStartup } of [...changeListeners]) {
+      if (change.previous === null && !atStartup) continue;
+      try {
+        listener(change);
+      } catch (err) {
+        log.warn("[OverlaySettings] change effect failed:", normalizeErrorMessage(err));
+      }
+    }
+  }
+
+  /** Startup: effects that subscribed atStartup apply the loaded settings once. */
+  function publishLoadedOverlaySettings(): void {
+    publish({ previous: null, next: ctx.overlaySettings });
+  }
+
+  function resolvePatch(patch: OverlaySettingsPatch): Readonly<Record<string, unknown>> {
+    return typeof patch === "function" ? patch(ctx.overlaySettings) : patch;
+  }
+
+  function writeOverlaySettings(nextSettings: unknown): OverlaySettings {
     const previous = ctx.overlaySettings;
     ctx.overlaySettings = normalizeOverlaySettings({
       ...ctx.overlaySettings,
@@ -487,40 +564,78 @@ export function createOverlaySettingsController(options: OverlaySettingsControll
       ctx.overlaySettings = previous;
       throw new Error("Could not save overlay settings");
     }
+    publish({ previous, next: ctx.overlaySettings });
     return { ...ctx.overlaySettings };
   }
 
-  let settingsUpdate: Promise<unknown> = Promise.resolve();
+  // Writes made while none is in flight apply at once, so a window reading its saved
+  // bounds right after a drag sees them. Later writes wait for the one in flight.
+  let writesInFlight = 0;
+  let lastWrite: Promise<unknown> = Promise.resolve();
 
-  function setOverlaySettingsWithLifecycle(
-    nextSettings: unknown,
+  function track<T>(write: Promise<T>): Promise<T> {
+    writesInFlight += 1;
+    // Counted down before the writer's await resumes, so it can write again at once.
+    const settled = write.finally(() => {
+      writesInFlight -= 1;
+    });
+    lastWrite = settled.catch(() => undefined);
+    return settled;
+  }
+
+  function enqueue<T>(task: () => T | Promise<T>): Promise<T> {
+    if (writesInFlight > 0) return track(lastWrite.then(task));
+    let result: T | Promise<T>;
+    try {
+      result = task();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return result instanceof Promise ? track(result) : Promise.resolve(result);
+  }
+
+  /** The synchronous write, for callers that cannot wait; refused while one is queued. */
+  function commitOverlaySettings(patch: OverlaySettingsPatch): OverlaySettings {
+    if (writesInFlight > 0) throw new Error("Overlay settings are still being saved");
+    return writeOverlaySettings(resolvePatch(patch));
+  }
+
+  /** Every settings write: normalised, saved, then announced to the change effects. */
+  function updateOverlaySettings(
+    patch: OverlaySettingsPatch,
     beforeSave?: () => void,
   ): Promise<OverlaySettings> {
-    const update = settingsUpdate.then(async () => {
+    return enqueue(() => {
+      const nextSettings = resolvePatch(patch);
       const nextEnabled = asRecord(nextSettings)?.warframeLifecycleEnabled;
       const previousEnabled = ctx.overlaySettings.warframeLifecycleEnabled === true;
       const lifecycleChanged = typeof nextEnabled === "boolean" && nextEnabled !== previousEnabled;
-      if (lifecycleChanged) await options.configureWarframeLifecycle(nextEnabled);
-      try {
+      if (!lifecycleChanged) {
         beforeSave?.();
-        return setOverlaySettings(nextSettings);
-      } catch (error) {
-        if (lifecycleChanged) await options.configureWarframeLifecycle(previousEnabled);
-        throw error;
+        return writeOverlaySettings(nextSettings);
       }
+      return (async () => {
+        await options.configureWarframeLifecycle(nextEnabled);
+        try {
+          beforeSave?.();
+          return writeOverlaySettings(nextSettings);
+        } catch (error) {
+          await options.configureWarframeLifecycle(previousEnabled);
+          throw error;
+        }
+      })();
     });
-    settingsUpdate = update.catch(() => undefined);
-    return update;
   }
 
   return {
     normalizeOverlaySettings,
     loadOverlaySettings,
-    saveOverlaySettings,
     unregisterOverlayHotkey,
     registerOverlayHotkey,
     setHotkeysActive,
-    setOverlaySettings,
-    setOverlaySettingsWithLifecycle,
+    commitOverlaySettings,
+    updateOverlaySettings,
+    onOverlaySettingsChanged,
+    publishLoadedOverlaySettings,
   };
 }

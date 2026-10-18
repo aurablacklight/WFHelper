@@ -53,3 +53,11 @@ Domain terms for this repository. A glossary only: no implementation detail.
 - **Overlay kind**: one of the overlays the game screen can show: relic rewards,
   relic planner, left and right riven panels, Arbitration summary and trade
   toast. Each kind has its own window, saved position and saved layout.
+
+## Settings
+
+- **Settings change**: one saved write to the app's settings, described by the
+  settings before it and after it.
+- **Settings effect**: what a part of the app does to follow a setting, such as
+  creating the tray icon or re-registering a hotkey. It applies the saved value
+  once at startup, if it needs to, and again on each change to that setting.

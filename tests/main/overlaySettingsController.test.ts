@@ -4,7 +4,12 @@ import {
   OVERLAY_SETTINGS_DEFAULTS,
   overlaysStartInteractive,
 } from "../../config/runtime/overlaySettings";
-import { createOverlaySettingsController } from "../../ipc/overlay/settings";
+import {
+  changedOverlaySettingKeys,
+  createOverlaySettingsController,
+  overlaySettingsChanged,
+  type OverlaySettingsChange,
+} from "../../ipc/overlay/settings";
 
 function buildController() {
   const ctx = {
@@ -57,7 +62,7 @@ function buildController() {
 describe("overlay settings controller", () => {
   it("preserves native resize precision when settings are saved and reloaded", () => {
     const { controller, deps } = buildController();
-    const saved = controller.setOverlaySettings({ overlayWindowScales: { planner: 1.237 } });
+    const saved = controller.commitOverlaySettings({ overlayWindowScales: { planner: 1.237 } });
     expect(saved.overlayWindowScales?.planner).toBe(1.237);
     deps.fs.existsSync.mockReturnValue(true);
     deps.fs.readFileSync.mockReturnValue(JSON.stringify(saved));
@@ -83,14 +88,14 @@ describe("overlay settings controller", () => {
     const loaded = controller.loadOverlaySettings();
     expect(loaded.rewardLayout).toEqual(normalized);
     expect(loaded.overlayLayouts?.planner?.fields.reward0Name?.hidden).toBe(true);
-    const saved = controller.setOverlaySettings({ notificationSoundEnabled: false });
+    const saved = controller.commitOverlaySettings({ notificationSoundEnabled: false });
     expect(saved.rewardLayout).toEqual(normalized);
     expect(JSON.parse(deps.writeFileAtomic.mock.calls.at(-1)![1]).rewardLayout).toEqual(normalized);
   });
 
   it("retains editor layouts across ordinary settings saves and strips foreign fields", () => {
     const { controller } = buildController();
-    controller.setOverlaySettings({
+    controller.commitOverlaySettings({
       overlayLayouts: {
         planner: {
           version: 1,
@@ -100,7 +105,7 @@ describe("overlay settings controller", () => {
         untrusted: { version: 1, fields: { anything: { scale: 3 } } },
       },
     });
-    const saved = controller.setOverlaySettings({ notificationSoundEnabled: false });
+    const saved = controller.commitOverlaySettings({ notificationSoundEnabled: false });
     expect(saved.overlayLayouts?.planner?.fields.relicName).toMatchObject({
       scale: 2,
       hidden: true,
@@ -265,8 +270,8 @@ describe("overlay settings controller", () => {
 
   it("keeps the saved notification volume when a save omits it", () => {
     const { controller, ctx } = buildController();
-    controller.setOverlaySettings({ notificationSoundVolume: 0.37 });
-    controller.setOverlaySettings({ notificationSoundEnabled: false });
+    controller.commitOverlaySettings({ notificationSoundVolume: 0.37 });
+    controller.commitOverlaySettings({ notificationSoundEnabled: false });
     expect(ctx.overlaySettings.notificationSoundVolume).toBe(0.37);
     expect(ctx.overlaySettings.notificationSoundEnabled).toBe(false);
   });
@@ -331,7 +336,7 @@ describe("overlay settings controller", () => {
 
   it("round-trips a saved trade toast position through save and load", () => {
     const { controller, deps } = buildController();
-    const saved = controller.setOverlaySettings({
+    const saved = controller.commitOverlaySettings({
       overlayWindowBounds: { tradeNotification: { x: 640.4, y: 88, displayId: "2" } },
     });
     expect(saved.overlayWindowBounds?.tradeNotification).toEqual({ x: 640, y: 88, displayId: "2" });
@@ -386,9 +391,10 @@ describe("overlay settings controller", () => {
         .rivenSimilarAuctionsShown,
     ).toBe(false);
     expect(
-      controller.setOverlaySettings({ rivenSimilarAuctionsShown: false }).rivenSimilarAuctionsShown,
+      controller.commitOverlaySettings({ rivenSimilarAuctionsShown: false })
+        .rivenSimilarAuctionsShown,
     ).toBe(false);
-    expect(controller.setOverlaySettings({ overlayScale: 1.2 }).rivenSimilarAuctionsShown).toBe(
+    expect(controller.commitOverlaySettings({ overlayScale: 1.2 }).rivenSimilarAuctionsShown).toBe(
       false,
     );
   });
@@ -448,7 +454,7 @@ describe("overlay settings controller", () => {
   it("persists settings", () => {
     const { controller, deps } = buildController();
 
-    const next = controller.setOverlaySettings({
+    const next = controller.commitOverlaySettings({
       hotkey: "alt + p",
       worldNotificationsEnabled: false,
     });
@@ -460,7 +466,7 @@ describe("overlay settings controller", () => {
 
   it("restores the previous settings and throws when an atomic write fails", () => {
     const { controller, deps, ctx } = buildController();
-    controller.setOverlaySettings({
+    controller.commitOverlaySettings({
       uiScale: 1.15,
       rewardLayout: { version: 1, fields: { rarity: { hidden: true } } },
     });
@@ -469,14 +475,14 @@ describe("overlay settings controller", () => {
       throw new Error("disk full");
     });
     expect(() =>
-      controller.setOverlaySettings({ uiScale: 1.4, rewardLayout: { version: 1, fields: {} } }),
+      controller.commitOverlaySettings({ uiScale: 1.4, rewardLayout: { version: 1, fields: {} } }),
     ).toThrow("Could not save overlay settings");
     expect(ctx.overlaySettings).toBe(previous);
     expect(deps.log.error).toHaveBeenCalledWith(
       "[OverlaySettings] Failed to save settings:",
       "disk full",
     );
-    const recovered = controller.setOverlaySettings({ notificationSoundEnabled: false });
+    const recovered = controller.commitOverlaySettings({ notificationSoundEnabled: false });
     expect(recovered.uiScale).toBe(1.15);
     expect(recovered.rewardLayout?.fields.rarity?.hidden).toBe(true);
     expect(recovered.notificationSoundEnabled).toBe(false);
@@ -493,8 +499,8 @@ describe("overlay settings controller", () => {
     deps.writeFileAtomic.mockImplementationOnce(() => {
       throw new Error("disk full");
     });
-    const failed = controller.setOverlaySettingsWithLifecycle({ warframeLifecycleEnabled: true });
-    const next = controller.setOverlaySettingsWithLifecycle({ warframeLifecycleEnabled: true });
+    const failed = controller.updateOverlaySettings({ warframeLifecycleEnabled: true });
+    const next = controller.updateOverlaySettings({ warframeLifecycleEnabled: true });
     await expect(failed).rejects.toThrow("Could not save overlay settings");
     await expect(next).resolves.toMatchObject({ warframeLifecycleEnabled: true });
     expect(calls).toEqual([true, false, true]);
@@ -521,7 +527,7 @@ describe("overlay settings controller", () => {
     const guard = vi.fn(() => {
       if (editorOpen) throw new Error("Close the overlay editor before importing layouts");
     });
-    const pending = controller.setOverlaySettingsWithLifecycle(
+    const pending = controller.updateOverlaySettings(
       { warframeLifecycleEnabled: true, rewardLayout: { version: 1, fields: {} } },
       guard,
     );
@@ -541,7 +547,7 @@ describe("overlay settings controller", () => {
     const { controller, deps, ctx } = buildController();
     deps.configureWarframeLifecycle.mockRejectedValueOnce(new Error("login registration failed"));
     await expect(
-      controller.setOverlaySettingsWithLifecycle({ warframeLifecycleEnabled: true }),
+      controller.updateOverlaySettings({ warframeLifecycleEnabled: true }),
     ).rejects.toThrow("login registration failed");
     expect(ctx.overlaySettings.warframeLifecycleEnabled).toBe(false);
     expect(deps.writeFileAtomic).not.toHaveBeenCalled();
@@ -598,5 +604,161 @@ describe("overlay settings controller", () => {
     // Game closes -> shortcuts released.
     controller.setHotkeysActive(false);
     expect(deps.globalShortcut.unregister).toHaveBeenCalledWith("Control+Alt+R");
+  });
+});
+
+describe("overlay settings write path", () => {
+  function holdLifecycle(deps: ReturnType<typeof buildController>["deps"]) {
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    deps.configureWarframeLifecycle.mockImplementation(async (next) => {
+      if (next) await held;
+    });
+    return () => release!();
+  }
+
+  it("applies a write at once when none is in flight", () => {
+    const { controller, ctx } = buildController();
+
+    void controller.updateOverlaySettings({ overlayScale: 1.2 });
+
+    expect(ctx.overlaySettings.overlayScale).toBe(1.2);
+  });
+
+  // Window bounds used to be assigned to ctx directly: no normalising, no queue.
+  it("normalises a window bounds write and queues it behind a save in flight", async () => {
+    const { controller, deps, ctx } = buildController();
+    controller.commitOverlaySettings({});
+    const release = holdLifecycle(deps);
+    const changes: string[][] = [];
+    controller.onOverlaySettingsChanged(({ previous, next }) =>
+      changes.push(
+        Object.keys(next).filter(
+          (key) => JSON.stringify(previous?.[key as never]) !== JSON.stringify(next[key as never]),
+        ),
+      ),
+    );
+
+    const lifecycle = controller.updateOverlaySettings({ warframeLifecycleEnabled: true });
+    const bounds = controller.updateOverlaySettings((current) => ({
+      overlayWindowBounds: {
+        ...current.overlayWindowBounds,
+        planner: { x: 10.6, y: "20", displayId: "  7  ", width: Number.NaN },
+      },
+    }));
+    const savedBounds = () => ctx.overlaySettings.overlayWindowBounds as Record<string, unknown>;
+    expect(savedBounds().planner).toBeUndefined();
+
+    release();
+    await Promise.all([lifecycle, bounds]);
+
+    expect(savedBounds().planner).toEqual({
+      x: 11,
+      y: 20,
+      displayId: "7",
+    });
+    expect(ctx.overlaySettings.warframeLifecycleEnabled).toBe(true);
+    expect(changes).toEqual([["warframeLifecycleEnabled"], ["overlayWindowBounds"]]);
+    const written = JSON.parse(deps.writeFileAtomic.mock.calls.at(-1)![1]);
+    expect(written.warframeLifecycleEnabled).toBe(true);
+    expect(written.overlayWindowBounds.planner).toEqual({ x: 11, y: 20, displayId: "7" });
+  });
+
+  it("refuses a synchronous write while a queued one is in flight", async () => {
+    const { controller, deps, ctx } = buildController();
+    const release = holdLifecycle(deps);
+    const pending = controller.updateOverlaySettings({ warframeLifecycleEnabled: true });
+
+    expect(() => controller.commitOverlaySettings({ overlayScale: 1.3 })).toThrow(
+      "still being saved",
+    );
+    release();
+    await pending;
+    expect(controller.commitOverlaySettings({ overlayScale: 1.3 }).overlayScale).toBe(1.3);
+    expect(ctx.overlaySettings.overlayScale).toBe(1.3);
+  });
+
+  it("announces each write with the settings before and after it", async () => {
+    const { controller, ctx } = buildController();
+    const listener = vi.fn();
+    controller.onOverlaySettingsChanged(listener);
+    const before = ctx.overlaySettings;
+
+    await controller.updateOverlaySettings({ overlayScale: 1.1 });
+
+    expect(listener).toHaveBeenCalledExactlyOnceWith({
+      previous: before,
+      next: ctx.overlaySettings,
+    });
+  });
+
+  it("does not announce a failed write", () => {
+    const { controller, deps } = buildController();
+    const listener = vi.fn();
+    controller.onOverlaySettingsChanged(listener);
+    deps.writeFileAtomic.mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+
+    expect(() => controller.commitOverlaySettings({ overlayScale: 1.1 })).toThrow();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("keeps the write when one effect throws, and runs the rest", async () => {
+    const { controller, deps, ctx } = buildController();
+    const after = vi.fn();
+    controller.onOverlaySettingsChanged(() => {
+      throw new Error("effect broke");
+    });
+    controller.onOverlaySettingsChanged(after);
+
+    await expect(controller.updateOverlaySettings({ overlayScale: 1.4 })).resolves.toMatchObject({
+      overlayScale: 1.4,
+    });
+    expect(ctx.overlaySettings.overlayScale).toBe(1.4);
+    expect(after).toHaveBeenCalledOnce();
+    expect(deps.log.warn).toHaveBeenCalledWith(
+      "[OverlaySettings] change effect failed:",
+      "effect broke",
+    );
+  });
+
+  it("hands the loaded settings at startup only to effects that asked for them", () => {
+    const { controller, ctx } = buildController();
+    const startup = vi.fn();
+    const changeOnly = vi.fn();
+    controller.onOverlaySettingsChanged(startup, { atStartup: true });
+    controller.onOverlaySettingsChanged(changeOnly);
+
+    controller.publishLoadedOverlaySettings();
+
+    expect(startup).toHaveBeenCalledExactlyOnceWith({ previous: null, next: ctx.overlaySettings });
+    expect(changeOnly).not.toHaveBeenCalled();
+  });
+});
+
+describe("changed overlay setting keys", () => {
+  it("compares nested values, not references", () => {
+    const previous = {
+      ...OVERLAY_SETTINGS_DEFAULTS,
+      overlayWindowBounds: { reward: { x: 1, y: 2 } },
+    };
+    const next = { ...structuredClone(previous), overlayScale: 1.3 };
+
+    expect(
+      changedOverlaySettingKeys({ previous, next } as unknown as OverlaySettingsChange),
+    ).toEqual(["overlayScale"]);
+    expect(
+      overlaySettingsChanged({ previous, next } as unknown as OverlaySettingsChange, [
+        "overlayWindowBounds",
+      ]),
+    ).toBe(false);
+    expect(
+      overlaySettingsChanged({ previous: null, next } as unknown as OverlaySettingsChange, [
+        "overlayWindowBounds",
+      ]),
+    ).toBe(true);
   });
 });
