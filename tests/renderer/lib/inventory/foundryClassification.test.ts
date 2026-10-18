@@ -5,16 +5,18 @@ import {
   parseFoundry,
 } from "../../../../src/lib/inventory/foundryResources.js";
 import type { ItemDbEntry, RawInventoryData } from "../../../../src/types/inventory.js";
+import { withSettledKinds } from "../../../fixtures/itemKind.js";
 
 // Paths and productCategory values below are copied from DE's PublicExport.
 // Every modular and pet part ships as productCategory "Pistols", so a bucket
 // that trusts productCategory files amps, kitguns and zaws under Secondary.
 function part(name: string, productCategory = "Pistols"): ItemDbEntry {
-  return { name, productCategory };
+  return { name, category: "Weapon", productCategory };
 }
 
 function classify(productUn: string, entry: ItemDbEntry, blueprintSuffix = "Blueprint"): string {
-  return classifyForFoundry(productUn, `${productUn}${blueprintSuffix}`, { [productUn]: entry });
+  const db = withSettledKinds({ [productUn]: entry });
+  return classifyForFoundry(productUn, `${productUn}${blueprintSuffix}`, db);
 }
 
 const AMP_PRISM = "/Lotus/Weapons/Corpus/OperatorAmplifiers/Set1/Barrel/CorpAmpSet1BarrelPartC";
@@ -70,9 +72,9 @@ describe("classifyForFoundry modular gear", () => {
       classifyForFoundry(
         MOA_ENGINE,
         "/Lotus/Types/Recipes/MoaPetParts/MoaPetEngineArcotekBlueprint",
-        {
+        withSettledKinds({
           [MOA_ENGINE]: part("Arcotek Core"),
-        },
+        }),
       ),
     ).toBe("Modular");
   });
@@ -89,10 +91,10 @@ describe("parseFoundry rows carry the modular bucket", () => {
       buildTime: 0,
       num: 1,
     });
-    const itemDb: Record<string, ItemDbEntry> = {
+    const itemDb: Record<string, ItemDbEntry> = withSettledKinds({
       [AMP_PRISM]: { ...part("Klamora Prism"), recipe: recipeFor(ampBlueprint) },
       [KITGUN_CHAMBER]: { ...part("Catchmoon"), recipe: recipeFor(kitgunBlueprint) },
-    };
+    });
     const raw: RawInventoryData = {
       Recipes: [
         { ItemType: ampBlueprint, ItemCount: 1 },
@@ -128,10 +130,14 @@ describe("classifyForFoundry keeps real gear in its own slot", () => {
     const parent = "/Lotus/Weapons/Tenno/Akimbo/AkLexPrimePistols";
     const component = "/Lotus/Types/Recipes/Weapons/WeaponParts/AkLexPrimeBarrel";
     expect(
-      classifyForFoundry(component, `${component}Blueprint`, {
-        [component]: { name: "Aklex Prime Barrel", componentOf: parent },
-        [parent]: { name: "Aklex Prime", productCategory: "Pistols" },
-      }),
+      classifyForFoundry(
+        component,
+        `${component}Blueprint`,
+        withSettledKinds({
+          [component]: { name: "Aklex Prime Barrel", componentOf: parent },
+          [parent]: { name: "Aklex Prime", category: "Weapon", productCategory: "Pistols" },
+        }),
+      ),
     ).toBe("Secondary");
   });
 
@@ -149,7 +155,7 @@ describe("classifyForFoundry keeps real gear in its own slot", () => {
       classifyForFoundry(
         critter,
         "/Lotus/Types/Recipes/DeimosRecipes/Pets/InfestedCritterMutagenABlueprint",
-        { [critter]: part("Mutagen Vome") },
+        withSettledKinds({ [critter]: part("Mutagen Vome") }),
       ),
     ).toBe("Companion");
     // Hound parts share the /Pets/ prefix with the Modular family; pets win.

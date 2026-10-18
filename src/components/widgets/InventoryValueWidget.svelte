@@ -20,7 +20,7 @@
 
   // Read-only view of the shared hydration controller: the Inventory tab owns
   // the queue, so nothing here enqueues work or touches the network.
-  const hydrationMetrics = getInventoryHydrationController().metricsByKey;
+  const hydrationRows = getInventoryHydrationController().rowsByKey;
 
   const settings = $derived(widgetSettings($dashboardLayout, "widget.inventoryValue"));
   const allTradables = $derived(settingBoolean(settings, "allTradables", false));
@@ -42,7 +42,7 @@
     ).filter((item) => isCountedForValue(item, scope)),
   );
   const totals = $derived(
-    computeInventoryValueTotals(buildInventoryViewItems(baseRows, $hydrationMetrics), scope),
+    computeInventoryValueTotals(buildInventoryViewItems(baseRows, $hydrationRows), scope),
   );
 </script>
 

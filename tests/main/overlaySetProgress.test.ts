@@ -14,11 +14,18 @@ const FORMA_BP = "/Lotus/Types/Recipes/Components/FormaBlueprint";
 const ITEM_DB: Record<string, Record<string, unknown>> = {
   [FORMA]: { uniqueName: FORMA, name: "Forma", category: "Misc" },
   [FORMA_BP]: { uniqueName: FORMA_BP, name: "Forma Blueprint", componentOf: FORMA },
-  [CHASSIS]: { uniqueName: CHASSIS, name: "Protea Prime Chassis Blueprint", componentOf: PARENT },
+  [CHASSIS]: {
+    uniqueName: CHASSIS,
+    name: "Protea Prime Chassis Blueprint",
+    componentOf: PARENT,
+    kind: "warframe",
+    kindPart: true,
+  },
   [PARENT]: {
     uniqueName: PARENT,
     name: "Protea Prime",
     category: "Warframe",
+    kind: "warframe",
     components: [
       { name: "Blueprint", uniqueName: `${RECIPES}/ProteaPrimeBlueprint`, itemCount: 1 },
       { name: "Chassis", uniqueName: CHASSIS, itemCount: 1 },

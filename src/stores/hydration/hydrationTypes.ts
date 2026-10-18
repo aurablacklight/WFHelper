@@ -1,6 +1,7 @@
-import type { InventoryBaseItem, ItemMetrics, MetricNeeds } from "../../lib/inventoryMarket.js";
+import type { InventoryBaseItem } from "../../lib/inventoryMarket.js";
 import type { WfmItemsLookup } from "../../types/ipc.js";
 import type { Readable } from "svelte/store";
+import type { RowIntent, RowPriceState } from "./rowPriceState.js";
 
 export const HYDRATION_BATCH_SIZE = 12;
 export const HYDRATION_TICK_MS = 45;
@@ -17,13 +18,13 @@ export interface HydrationTask {
   key: string;
   item: InventoryBaseItem;
   lookup: WfmItemsLookup;
-  needs: MetricNeeds;
+  intent: RowIntent;
 }
 
 export interface InventoryHydrationController {
-  metricsByKey: Readable<Record<string, ItemMetrics>>;
-  enqueue: (items: InventoryBaseItem[], lookup: WfmItemsLookup, needs: MetricNeeds) => void;
-  /** Pause processing but keep cached metrics. */
+  rowsByKey: Readable<Record<string, RowPriceState>>;
+  enqueue: (items: InventoryBaseItem[], lookup: WfmItemsLookup, intent: RowIntent) => void;
+  /** Pause processing but keep hydrated rows. */
   pause: () => void;
   /** Resume processing after a pause. */
   resume: () => void;

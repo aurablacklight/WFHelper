@@ -22,12 +22,13 @@ import {
   TORID,
   TORID_ADAPTER,
 } from "../../fixtures/world/circuitFixture.js";
+import { withSettledKinds } from "../../fixtures/itemKind.js";
 
 const LAETUM = "/Lotus/Weapons/Tenno/Zariman/Pistols/HeavyPistol/ZarimanHeavyPistol";
 const LAETUM_BP = "/Lotus/Types/Recipes/Weapons/ZarimanHeavyPistolBlueprint";
 const ONOS = "/Lotus/Weapons/Thanotech/EntratiWristGun/EntratiWristGunWeapon";
 
-const DB: Record<string, ItemDbEntry> = {
+const DB: Record<string, ItemDbEntry> = withSettledKinds({
   ...CIRCUIT_DB,
   [LAETUM]: {
     name: "Laetum",
@@ -38,7 +39,7 @@ const DB: Record<string, ItemDbEntry> = {
   },
   [LAETUM_BP]: { name: "Laetum Blueprint", buildsProduct: LAETUM },
   [ONOS]: { name: "Onos", imageUrl: "onos.png", category: "Weapon", productCategory: "Pistols" },
-};
+});
 
 const INVENTORY: RawInventoryData = {
   ...CIRCUIT_INVENTORY,
@@ -178,6 +179,31 @@ describe("buildIncarnonWeapons", () => {
       status: "unlocked",
     });
     expect(byName(weapons, "Onos")).toMatchObject({ slot: "secondary", evolution: 2 });
+  });
+
+  it("never reads a modular part's Pistols export label as a secondary weapon", () => {
+    const chamber =
+      "/Lotus/Weapons/SolarisUnited/Secondary/SUModularSecondarySet1/Barrel/SUModularSecondaryBarrelAPart";
+    const prism = "/Lotus/Weapons/Corpus/OperatorAmplifiers/Set1/Barrel/CorpAmpSet1BarrelPartC";
+    const db = withSettledKinds({
+      ...DB,
+      [chamber]: { name: "Catchmoon", category: "Weapon", productCategory: "Pistols" },
+      [prism]: { name: "Klamora Prism", category: "Weapon", productCategory: "Pistols" },
+    });
+    const rows = buildIncarnonWeapons(
+      db,
+      {
+        ...INVENTORY,
+        EvolutionProgress: [
+          { ItemType: chamber, Rank: 1, Progress: 0 },
+          { ItemType: prism, Rank: 1, Progress: 0 },
+        ],
+      },
+      [],
+    );
+
+    expect(rows.map((w) => w.name)).not.toContain("Catchmoon");
+    expect(rows.map((w) => w.name)).not.toContain("Klamora Prism");
   });
 
   it("flags a native blueprint only while the weapon itself is missing", () => {

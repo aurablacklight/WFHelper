@@ -188,6 +188,33 @@ describe("writes", () => {
     expect(showsSafetyBadge({ tradable: true, inventoryGroup: "mods" }, null)).toBe(false);
   });
 
+  it("builds the badge count and tooltip once for card and list", async () => {
+    const { safetyBadgeFor } = await loadStore();
+    const verdict = {
+      total: 3,
+      reserved: 1,
+      safe: 2,
+      reservations: [
+        {
+          rule: "lock" as SafetyRuleId,
+          quantity: 1,
+          reasonKey: "inventory.safety.reason.locked" as const,
+          binding: true,
+        },
+      ],
+    };
+    const t = (key: string, params?: Record<string, unknown>) =>
+      params ? `${key}:${JSON.stringify(params)}` : key;
+    const item = { tradable: true, inventoryGroup: "all_parts" as const };
+
+    expect(safetyBadgeFor(item, verdict, t)).toEqual({
+      safe: 2,
+      title: 'inventory.safety.safeCount:{"count":2}\ninventory.safety.reason.locked',
+    });
+    expect(safetyBadgeFor({ ...item, tradable: false }, verdict, t)).toBeNull();
+    expect(safetyBadgeFor(item, null, t)).toBeNull();
+  });
+
   it("feeds buildSafetyContext without adaptation", async () => {
     const { inventorySafety, setSpareDefault, toggleSafetyLock } = await loadStore();
     setSpareDefault(2);

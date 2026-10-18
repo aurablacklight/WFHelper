@@ -8,11 +8,11 @@ import type {
   Resource,
 } from "../../types/inventory.js";
 import {
-  MODULAR_PART_PATH,
-  PET_PART_PATH,
-  isResourceItem,
-  resolveItem,
-} from "./itemClassification.js";
+  isModularPartPath,
+  isPetPartPath,
+  type ItemKind,
+} from "../../../config/shared/itemKind.js";
+import { isResourceItem, resolveItem } from "./itemClassification.js";
 
 function parseCompletionDate(value: unknown): Date | null {
   if (!value) return null;
@@ -48,100 +48,46 @@ export const EQUIPMENT_CATEGORY_ORDER = [
   "Misc",
 ];
 
-// Exported because the Full Sets category chips bucket sets the same way.
-// Component blueprints inherit their parent's category because their own raw
-// category is Resource.
+const FOUNDRY_CATEGORY_BY_KIND: Record<ItemKind, string> = {
+  warframe: "Warframe",
+  necramech: "Warframe",
+  primary: "Primary",
+  secondary: "Secondary",
+  melee: "Melee",
+  archwing: "Archwing",
+  "arch-gun": "Archwing",
+  "arch-melee": "Archwing",
+  companion: "Companion",
+  "companion-weapon": "Companion",
+  gear: "Gear",
+  cosmetic: "Appearance",
+  amp: "Misc",
+  "k-drive": "Misc",
+  railjack: "Misc",
+};
+
+// Exported because the Full Sets category chips bucket sets the same way. The
+// item database gives parts and blueprints their gear's kind, so only a
+// blueprint whose product it does not know falls back to the paths.
 export function classifyForFoundry(
   productUn: string | null,
   blueprintUn: string,
   itemDb: Record<string, ItemDbEntry>,
 ): string {
   const productEntry = productUn ? itemDb[productUn] : null;
-  const productCategory = String(productEntry?.productCategory ?? "").toLowerCase();
-  const category = String(productEntry?.category ?? "").toLowerCase();
+  if (productEntry?.modularPart) return "Modular";
+  if (productEntry?.kind) return FOUNDRY_CATEGORY_BY_KIND[productEntry.kind];
 
-  const parentUn = productEntry?.componentOf;
-  const parentEntry = parentUn ? itemDb[parentUn] : null;
-  const parentCategory = String(parentEntry?.category ?? "").toLowerCase();
-  const parentProductCategory = String(parentEntry?.productCategory ?? "").toLowerCase();
-
-  const joinedPath = `${productUn ?? ""} ${parentUn ?? ""} ${blueprintUn}`.toLowerCase();
-
+  const path = `${productUn ?? ""} ${blueprintUn}`.toLowerCase();
   // Moa parts sit under /Pets/ as well and belong to Modular, so this answers
   // before the pet path. Hound parts match only the pet path and stay Companion.
-  if (MODULAR_PART_PATH.test(joinedPath)) return "Modular";
-
-  // Pet parts (Infested critter mutagens etc.) carry PEP productCategory
-  // "Pistols" which would wrongly bucket them as Secondary. Path wins.
-  if (PET_PART_PATH.test(joinedPath)) return "Companion";
-
+  if (isModularPartPath(path)) return "Modular";
+  if (isPetPartPath(path)) return "Companion";
   // Before the Warframe branch: Archwing suits live under /Powersuits/ as well.
-  if (
-    productCategory === "spacesuits" ||
-    productCategory === "spaceguns" ||
-    productCategory === "spacemelee" ||
-    parentProductCategory === "spacesuits" ||
-    parentProductCategory === "spaceguns" ||
-    parentProductCategory === "spacemelee" ||
-    category.startsWith("arch") ||
-    parentCategory.startsWith("arch") ||
-    /\/(archwing|spacesuits|spaceguns|spacemelee)\//.test(joinedPath)
-  )
-    return "Archwing";
-
-  if (
-    productCategory === "suits" ||
-    productCategory === "mechsuits" ||
-    parentProductCategory === "suits" ||
-    parentProductCategory === "mechsuits" ||
-    category === "warframe" ||
-    category === "warframes" ||
-    parentCategory === "warframe" ||
-    parentCategory === "warframes" ||
-    /\/(warframerecipes|powersuits)\//.test(joinedPath)
-  )
-    return "Warframe";
-
-  if (
-    productCategory === "sentinels" ||
-    productCategory === "kubrowpets" ||
-    parentProductCategory === "sentinels" ||
-    parentProductCategory === "kubrowpets" ||
-    category === "companion" ||
-    category === "sentinels" ||
-    category === "pets" ||
-    parentCategory === "companion"
-  )
-    return "Companion";
-
-  // Weapon slot split uses productCategory since PEP's raw category is "Weapon".
-  if (
-    productCategory === "longguns" ||
-    parentProductCategory === "longguns" ||
-    category === "primary" ||
-    parentCategory === "primary"
-  )
-    return "Primary";
-  if (
-    productCategory === "pistols" ||
-    parentProductCategory === "pistols" ||
-    category === "secondary" ||
-    parentCategory === "secondary"
-  )
-    return "Secondary";
-  if (
-    productCategory === "melee" ||
-    parentProductCategory === "melee" ||
-    category === "melee" ||
-    parentCategory === "melee"
-  )
-    return "Melee";
-
-  if (category === "gear" || parentCategory === "gear" || /\/gear\//.test(joinedPath))
-    return "Gear";
-  if (category === "cosmetic" || category === "appearance" || /\/customs\//.test(joinedPath))
-    return "Appearance";
-
+  if (/\/(archwing|spacesuits|spaceguns|spacemelee)\//.test(path)) return "Archwing";
+  if (/\/(warframerecipes|powersuits)\//.test(path)) return "Warframe";
+  if (/\/gear\//.test(path)) return "Gear";
+  if (/\/customs\//.test(path)) return "Appearance";
   return "Misc";
 }
 

@@ -2,6 +2,19 @@
 
 Domain terms for this repository. A glossary only: no implementation detail.
 
+## Inventory pricing
+
+- **Row price state**: what one inventory row knows about its market data, one
+  field at a time: its price, the rank-0 and max-rank price pair, the order
+  summary pair, ducats and the icon.
+- **Field status**: how a row came to hold a field's value. One of not tried,
+  fetched, no data (the market confirmed there is none) or failed (a transient
+  error, retried after a cooldown). Each carries when it was decided.
+- **Intent**: what a caller wants for a row: which fields, and whether the row
+  is visible (may fetch) or in the background (snapshot caches only).
+- **Fetch plan**: the fields a row still needs to fetch for an intent. The only
+  place a skip-or-fetch decision is made.
+
 ## Build advisor
 
 - **Build**: the set of mods equipped on one weapon, in slot order.
@@ -22,6 +35,17 @@ Domain terms for this repository. A glossary only: no implementation detail.
 - **Sustained DPS**: burst DPS spread over a full magazine and its reload.
 - **Validation**: comparing computed arsenal stats for a saved config with the
   arsenal screen. A rule is trusted only after it passes.
+
+## Item database
+
+- **Item kind**: the gear family an item is or belongs to (Warframe, primary,
+  secondary, melee, Archwing, arch-gun, arch-melee, companion, companion weapon,
+  amp, Necramech, K-Drive, Railjack, gear, cosmetic). One vocabulary, whichever
+  data source named the item.
+- **Kind part**: a component, blueprint or crafting part of a kind's gear rather
+  than the gear itself. Never masterable on its own.
+- **Modular part**: a piece of a modular build (kitgun, zaw, amp, K-Drive, Moa)
+  or a part of one. Has no weapon slot of its own.
 
 ## Overlays
 

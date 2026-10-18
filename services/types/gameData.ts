@@ -1,5 +1,7 @@
 /** Fields consumed from DE public exports and WFCD items. */
 
+import type { ItemKindFields } from "../../config/shared/itemKind";
+
 /** A single item from any PEP Export* record. */
 export interface PepExportItem {
   name: string;
@@ -50,7 +52,7 @@ export interface ComponentEntry {
   drops?: DropEntry[];
 }
 
-export interface RendererItemEntry {
+export interface RendererItemEntry extends ItemKindFields {
   /** English. Stays the join key for warframe.market, OCR and by-name lookups. */
   name: string;
   /** Generated from an internal path because no source supplied an English name. */

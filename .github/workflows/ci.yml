@@ -1,13 +1,52 @@
 name: CI
 
+# PRs run once through pull_request; branch pushes without a PR run nothing.
+# main keeps a full run per push, since release.yml checks the tagged commit's CI.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
+# A newer commit on a PR cancels its older run; main runs always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # PRs that change only docs and markdown skip the build and test jobs.
+  # Pushes to main and manual runs always run everything.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Anything besides docs changed
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          echo "$changed"
+          if echo "$changed" | grep -qvE '^docs/|\.md$'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   validate:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -55,7 +94,7 @@ jobs:
 
       # Skipped on PRs: the merge commit is frozen at run creation, so an
       # advisory published after a PR opened reddens it for reasons unrelated
-      # to its diff. Branch pushes and the pre-push hook still gate on it, and
+      # to its diff. Pushes to main and the pre-push hook still gate on it, and
       # releases read this job's result; audit.yml catches drift on a schedule.
       - name: Dependency vulnerability audit
         if: github.event_name != 'pull_request'
@@ -104,6 +143,8 @@ jobs:
   # Native E2E stays on Windows; Linux also gates application startup.
 
   validate-windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
 
     steps:
@@ -154,6 +195,8 @@ jobs:
   # The Playwright suite boots Electron per spec and took 21 minutes on one
   # runner; three shards bring it under 8. Actions minutes are free on a public repo.
   e2e-windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
     strategy:
       fail-fast: false
