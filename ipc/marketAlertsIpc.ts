@@ -1,5 +1,5 @@
 import ctx from "./context";
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
+
 import { sendDesktopNotificationRaw } from "./worldStateIpc";
 import { addInventoryListener } from "./inventoryIpc";
 import { isObject } from "./ipcValidators";
@@ -9,20 +9,7 @@ import * as rivenData from "../services/rivenData";
 import * as wfmCatalog from "../services/wfmCatalog";
 import { isRivenWeaponSlug } from "../services/wfmRivenItems";
 import * as wfmSession from "../services/wfmSession";
-import {
-  MARKET_ALERTS_CHANGED,
-  MARKET_ALERTS_CLEAR_COOLDOWN,
-  MARKET_ALERTS_CLEAR_HITS,
-  MARKET_ALERTS_DELETE,
-  MARKET_ALERTS_EXPORT,
-  MARKET_ALERTS_HITS,
-  MARKET_ALERTS_IMPORT,
-  MARKET_ALERTS_LIST,
-  MARKET_ALERTS_SAVE,
-  MARKET_ALERTS_SET_ENABLED,
-  MARKET_ALERTS_STATUS,
-  MARKET_ALERTS_TEST_FIRE,
-} from "../config/shared/ipcChannels";
+import { MARKET_ALERTS_CHANGED } from "../config/shared/ipcChannels";
 import {
   MARKET_ALERT_IMPORT_MAX_BYTES,
   MARKET_ALERT_MAX_RULES,
@@ -32,6 +19,10 @@ import type {
   MarketAlertImportOutcome,
   MarketAlertSaveResult,
 } from "../config/shared/marketAlertTypes";
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 const log = withScope("marketAlertsIpc");
 
@@ -113,85 +104,63 @@ function register(): void {
     onChanged: pushAlertsChanged,
   });
 
-  handleAuthorized(MARKET_ALERTS_LIST, assertMainRendererSender, () =>
-    marketAlerts.listMarketAlertRules(),
-  );
+  handle(api.marketAlertsList, () => marketAlerts.listMarketAlertRules());
 
-  handleAuthorized(MARKET_ALERTS_SAVE, assertMainRendererSender, (_event, payload: unknown) =>
-    saveFromPayload(payload),
-  );
+  handle(api.marketAlertsSave, (_event, payload: unknown) => saveFromPayload(payload));
 
-  handleAuthorized(MARKET_ALERTS_DELETE, assertMainRendererSender, (_event, id: unknown) => {
+  handle(api.marketAlertsDelete, (_event, id: unknown) => {
     const ruleId = toNonEmptyString(id, 64);
     return { ok: !!ruleId && marketAlerts.deleteMarketAlertRule(ruleId) };
   });
 
-  handleAuthorized(
-    MARKET_ALERTS_SET_ENABLED,
-    assertMainRendererSender,
-    (_event, id: unknown, enabled: unknown) => {
-      const ruleId = toNonEmptyString(id, 64);
-      if (!ruleId || typeof enabled !== "boolean") return { ok: false };
-      return { ok: marketAlerts.setMarketAlertRuleEnabled(ruleId, enabled) };
-    },
-  );
+  handle(api.marketAlertsSetEnabled, (_event, id: unknown, enabled: unknown) => {
+    const ruleId = toNonEmptyString(id, 64);
+    if (!ruleId || typeof enabled !== "boolean") return { ok: false };
+    return { ok: marketAlerts.setMarketAlertRuleEnabled(ruleId, enabled) };
+  });
 
-  handleAuthorized(
-    MARKET_ALERTS_CLEAR_COOLDOWN,
-    assertMainRendererSender,
-    (_event, id: unknown) => {
-      const ruleId = toNonEmptyString(id, 64);
-      return { ok: !!ruleId && marketAlerts.clearMarketAlertCooldown(ruleId) };
-    },
-  );
+  handle(api.marketAlertsClearCooldown, (_event, id: unknown) => {
+    const ruleId = toNonEmptyString(id, 64);
+    return { ok: !!ruleId && marketAlerts.clearMarketAlertCooldown(ruleId) };
+  });
 
-  handleAuthorized(MARKET_ALERTS_HITS, assertMainRendererSender, () =>
-    marketAlerts.getMarketAlertHits(),
-  );
+  handle(api.marketAlertsGetHits, () => marketAlerts.getMarketAlertHits());
 
-  handleAuthorized(MARKET_ALERTS_CLEAR_HITS, assertMainRendererSender, () => {
+  handle(api.marketAlertsClearHits, () => {
     marketAlerts.clearMarketAlertHits();
     return { ok: true };
   });
 
   // The cooldowns ride the status poll the renderer already runs, so a card can
   // count one down without a second round trip.
-  handleAuthorized(MARKET_ALERTS_STATUS, assertMainRendererSender, () => ({
+  handle(api.marketAlertsStatus, () => ({
     ...marketAlerts.getMarketAlertEngineStatus(),
     cooldowns: marketAlerts.getMarketAlertCooldowns(),
   }));
 
-  handleAuthorized(
-    MARKET_ALERTS_TEST_FIRE,
-    assertMainRendererSender,
-    async (_event, id: unknown) => {
-      const ruleId = toNonEmptyString(id, 64);
-      if (!ruleId) return { ok: false as const, error: "unknown rule" };
-      return marketAlerts.testFireMarketAlertRule(ruleId);
-    },
-  );
+  handle(api.marketAlertsTestFire, async (_event, id: unknown) => {
+    const ruleId = toNonEmptyString(id, 64);
+    if (!ruleId) return { ok: false as const, error: "unknown rule" };
+    return marketAlerts.testFireMarketAlertRule(ruleId);
+  });
 
-  handleAuthorized(MARKET_ALERTS_EXPORT, assertMainRendererSender, (_event, ids?: unknown) => {
+  handle(api.marketAlertsExport, (_event, ids?: unknown) => {
     const wanted = Array.isArray(ids)
       ? ids.filter((id): id is string => typeof id === "string").slice(0, MARKET_ALERT_MAX_RULES)
       : undefined;
     return marketAlerts.exportMarketAlertRules(wanted);
   });
 
-  handleAuthorized(
-    MARKET_ALERTS_IMPORT,
-    assertMainRendererSender,
-    (_event, text: unknown): MarketAlertImportOutcome => {
-      // Character count is a floor on byte count, so this cheap gate runs
-      // before the parser's exact UTF-8 measurement.
-      if (typeof text !== "string" || text.length > MARKET_ALERT_IMPORT_MAX_BYTES) {
-        return { ok: false, error: "import is too large" };
-      }
-      // No riven-market check here on purpose: an import carries slugs that are
-      // already resolved, and gating it would make importing need the network.
-      return marketAlerts.importMarketAlertRules(text);
-    },
-  );
+  handle(api.marketAlertsImport, (_event, text: unknown): MarketAlertImportOutcome => {
+    // Character count is a floor on byte count, so this cheap gate runs
+    // before the parser's exact UTF-8 measurement.
+    if (typeof text !== "string" || text.length > MARKET_ALERT_IMPORT_MAX_BYTES) {
+      return { ok: false, error: "import is too large" };
+    }
+    // No riven-market check here on purpose: an import carries slugs that are
+    // already resolved, and gating it would make importing need the network.
+    return marketAlerts.importMarketAlertRules(text);
+  });
 }
 
 export { register };

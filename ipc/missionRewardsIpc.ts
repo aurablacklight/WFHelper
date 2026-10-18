@@ -1,12 +1,8 @@
 import ctx from "./context";
 import { addInventoryListener } from "./inventoryIpc";
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
+
 import { broadcastToRenderers } from "./popoutIpc";
-import {
-  MISSION_REWARDS_GET,
-  MISSION_REWARDS_PAGE,
-  MISSION_REWARDS_UPDATED,
-} from "../config/shared/ipcChannels";
+import { MISSION_REWARDS_UPDATED } from "../config/shared/ipcChannels";
 import type {
   MissionRewardSummary,
   MissionRewardSummaryView,
@@ -18,6 +14,10 @@ import { readGameInventory } from "../services/gameMemoryInventory";
 import * as missionRewards from "../services/missionRewards";
 import { normalizeMissionRewardsQuery, queryHistory } from "../services/missionRewardsHistory";
 import { loadRegionTranslation, nodeLabel } from "../services/regionNames";
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 let unsubscribeLines: (() => void) | null = null;
 let unsubscribeInventory: (() => void) | null = null;
@@ -105,10 +105,8 @@ export function register(): void {
   unsubscribeInventory?.();
   unsubscribeInventory = addInventoryListener((data) => missionRewards.onInventoryLoaded(data));
 
-  handleAuthorized(MISSION_REWARDS_GET, assertMainRendererSender, () => buildPayload());
-  handleAuthorized(MISSION_REWARDS_PAGE, assertMainRendererSender, (_event, raw: unknown) =>
-    buildPage(raw),
-  );
+  handle(api.getMissionRewards, () => buildPayload());
+  handle(api.getMissionRewardsPage, (_event, raw: unknown) => buildPage(raw));
 }
 
 export function stop(): void {

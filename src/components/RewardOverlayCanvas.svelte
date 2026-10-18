@@ -2,7 +2,7 @@
   import { onMount, untrack } from "svelte";
   import { getOverlayDescriptor } from "../../config/shared/overlayLayout.js";
   import type { OverlayEditCommand, OverlayEditState } from "../../config/shared/overlayLayout.js";
-  import type { IpcInvokeMap } from "../types/ipc.js";
+  import type { IpcInvokeMap } from "../../config/shared/ipcRoutes.js";
   import { invoke } from "../lib/ipc.js";
   import { locale, tr } from "../lib/i18n.js";
 

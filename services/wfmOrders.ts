@@ -15,7 +15,7 @@ import { unwrapWfmResponse, WfmApiError } from "./wfmTypes";
 
 import { formatWfmAssetUrl } from "../config/shared/wfm";
 
-export interface NormalisedOrder {
+export type NormalisedOrder = {
   id: string;
   orderType: string;
   platinum: number;
@@ -28,7 +28,7 @@ export interface NormalisedOrder {
   itemName: string;
   itemUrlName: string | null;
   itemThumb: string | null;
-}
+};
 
 function normalise(raw: WfmRawOrder, forcedType?: string): NormalisedOrder {
   // v2: item details come from catalog enrichment (raw._catalogItem), not embedded object

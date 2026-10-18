@@ -1,6 +1,6 @@
 import { getOverlayDescriptor } from "../config/shared/overlayLayout";
 import ctx from "./context";
-import { assertArbiSummarySender, onAuthorized } from "./ipcSecurity";
+
 import { createOverlayWindowsController } from "./overlay/windows";
 import {
   controllerAdapter,
@@ -14,16 +14,14 @@ import { hardenBrowserWindowNavigation } from "../services/windowSecurity";
 import { isArbiSummaryOverlayEnabled } from "../config/runtime/overlaySettings";
 import { buildArbiSummaryPayload } from "../config/shared/arbiSummary";
 import type { ArbiRunRecord } from "../config/shared/arbiTypes";
-import {
-  ARBI_OPEN_RUN,
-  ARBI_SUMMARY_CLOSE,
-  ARBI_SUMMARY_DATA,
-  ARBI_SUMMARY_OPEN_DETAILS,
-  ARBI_SUMMARY_READY,
-} from "../config/shared/ipcChannels";
+import { ARBI_OPEN_RUN, ARBI_SUMMARY_DATA } from "../config/shared/ipcChannels";
 
 import { BrowserWindow, app, screen } from "electron";
 import path from "node:path";
+import { listen } from "./routeHandlers";
+import { overlayRoutes } from "../config/shared/overlayIpcRoutes";
+
+const { arbiSummary } = overlayRoutes;
 
 const log = withScope("arbiOverlayIpc");
 
@@ -63,7 +61,7 @@ export const arbiSummaryWindowsController = createOverlayWindowsController({
   onWindowBoundsChanged: rememberOverlayWindowBounds,
 });
 
-// Never click-through, so it always takes a drag; its renderer reports ARBI_SUMMARY_READY.
+// Never click-through, so it always takes a drag; its renderer reports arbiSummary.ready.
 registerOverlay(
   "arbiSummary",
   controllerAdapter(arbiSummaryWindowsController, () => true, { reportsReady: false }),
@@ -97,15 +95,15 @@ export function maybeShowArbiSummary(run: ArbiRunRecord): void {
 }
 
 export function register(): void {
-  onAuthorized(ARBI_SUMMARY_READY, assertArbiSummarySender, (event) => {
+  listen(arbiSummary.ready, (event) => {
     arbiSummaryWindowsController.markRendererReady(event.sender.id);
   });
 
-  onAuthorized(ARBI_SUMMARY_CLOSE, assertArbiSummarySender, () => {
+  listen(arbiSummary.close, () => {
     hideArbiSummary();
   });
 
-  onAuthorized(ARBI_SUMMARY_OPEN_DETAILS, assertArbiSummarySender, (_event, rawRunId: unknown) => {
+  listen(arbiSummary.openDetails, (_event, rawRunId: unknown) => {
     const runId = typeof rawRunId === "string" ? rawRunId : "";
     hideArbiSummary();
 

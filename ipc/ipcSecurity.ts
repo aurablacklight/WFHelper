@@ -124,6 +124,21 @@ function unregisterPopoutWebContents(webContentsId: number): void {
   popoutWebContentsIds.delete(webContentsId);
 }
 
+// popoutIpc owns the live popout window list and installs this when it registers.
+let isLivePopoutSender: (webContentsId: number) => boolean = () => false;
+
+function setPopoutSenderLookup(lookup: (webContentsId: number) => boolean): void {
+  isLivePopoutSender = lookup;
+}
+
+/** Only a window popoutIpc created may pin itself; never the main window. */
+function assertPopoutSender(event: IpcEventLike, _channel: string): void {
+  const senderId = event?.sender?.id;
+  if (typeof senderId !== "number") throw new Error("Missing IPC sender event metadata");
+  if (isLivePopoutSender(senderId)) return;
+  throw new Error(`Sender webContents id ${senderId} is not a popout window`);
+}
+
 function assertMainRendererSender(event: IpcEventLike, _channel: string): void {
   const senderId = event?.sender?.id;
   if (typeof senderId === "number" && popoutWebContentsIds.has(senderId)) {
@@ -291,6 +306,8 @@ export {
   assertMainRendererSender,
   registerPopoutWebContents,
   unregisterPopoutWebContents,
+  setPopoutSenderLookup,
+  assertPopoutSender,
   assertOverlayRendererSender,
   assertLocalizedOverlaySender,
   assertRivenOverlayRendererSender,

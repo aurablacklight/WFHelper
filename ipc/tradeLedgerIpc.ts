@@ -2,7 +2,6 @@ import fs from "node:fs";
 
 import { dialog } from "electron";
 
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
 import ctx from "./context";
 import { mainMessage } from "./overlayI18n";
 import * as tradeTracker from "../services/tradeTracker";
@@ -12,13 +11,7 @@ import { stripPlatformGlyphs } from "../services/tradeLogSanitize";
 import { withScope } from "../services/logger";
 import { normalizeErrorMessage } from "../config/shared/errors";
 import { asRecord } from "../config/shared/objectValidation";
-import {
-  LEDGER_EXPORT,
-  LEDGER_IMPORT_APPLY,
-  LEDGER_IMPORT_PREVIEW,
-  LEDGER_QUERY,
-  LEDGER_UPDATE_EVENT,
-} from "../config/shared/ipcChannels";
+
 import type { TradeEvent, TradeType } from "../config/shared/statsTypes";
 import type {
   LedgerErrorCode,
@@ -29,6 +22,10 @@ import type {
   LedgerPage,
   LedgerQuery,
 } from "../config/shared/tradeLedgerTypes";
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 const log = withScope("tradeLedgerIpc");
 
@@ -190,7 +187,7 @@ function stripPartners(events: TradeEvent[], includePartners: boolean): TradeEve
 }
 
 function register(): void {
-  handleAuthorized(LEDGER_QUERY, assertMainRendererSender, (_event, raw: unknown): LedgerPage => {
+  handle(api.ledgerQuery, (_event, raw: unknown): LedgerPage => {
     try {
       return queryLedger(parseQuery(raw), tradeTracker.getTradeLog());
     } catch (err) {
@@ -199,9 +196,8 @@ function register(): void {
     }
   });
 
-  handleAuthorized(
-    LEDGER_IMPORT_PREVIEW,
-    assertMainRendererSender,
+  handle(
+    api.ledgerImportPreview,
     async (): Promise<LedgerImportPreview | { error: LedgerErrorCode }> => {
       if (!ctx.mainWindow) return { error: "noWindow" };
       const picked = await dialog.showOpenDialog(ctx.mainWindow, {
@@ -225,31 +221,26 @@ function register(): void {
     },
   );
 
-  handleAuthorized(
-    LEDGER_IMPORT_APPLY,
-    assertMainRendererSender,
-    (_event, batchId: unknown): LedgerImportResult => {
-      if (typeof batchId !== "string" || !batchId || batchId.length > MAX_ID_LENGTH) {
-        return { applied: 0, skippedDuplicates: 0, error: "invalidBatch" };
-      }
-      // A batch is gone once it was applied or a fourth preview evicted it.
-      // Nothing expires it on a clock, so the message must not claim it did.
-      const staged = takeStagedImport(batchId);
-      if (!staged) {
-        return { applied: 0, skippedDuplicates: 0, error: "batchGone" };
-      }
-      try {
-        return tradeTracker.addLedgerEvents(staged);
-      } catch (err) {
-        log.warn("[Ledger] Import apply failed:", normalizeErrorMessage(err));
-        return { applied: 0, skippedDuplicates: 0, error: "importWriteFailed" };
-      }
-    },
-  );
+  handle(api.ledgerImportApply, (_event, batchId: unknown): LedgerImportResult => {
+    if (typeof batchId !== "string" || !batchId || batchId.length > MAX_ID_LENGTH) {
+      return { applied: 0, skippedDuplicates: 0, error: "invalidBatch" };
+    }
+    // A batch is gone once it was applied or a fourth preview evicted it.
+    // Nothing expires it on a clock, so the message must not claim it did.
+    const staged = takeStagedImport(batchId);
+    if (!staged) {
+      return { applied: 0, skippedDuplicates: 0, error: "batchGone" };
+    }
+    try {
+      return tradeTracker.addLedgerEvents(staged);
+    } catch (err) {
+      log.warn("[Ledger] Import apply failed:", normalizeErrorMessage(err));
+      return { applied: 0, skippedDuplicates: 0, error: "importWriteFailed" };
+    }
+  });
 
-  handleAuthorized(
-    LEDGER_UPDATE_EVENT,
-    assertMainRendererSender,
+  handle(
+    api.ledgerUpdateEvent,
     (_event, id: unknown, rawPatch: unknown): { ok: boolean; error?: LedgerErrorCode } => {
       if (typeof id !== "string" || !id || id.length > MAX_ID_LENGTH) {
         return { ok: false, error: "invalidId" };
@@ -267,9 +258,8 @@ function register(): void {
     },
   );
 
-  handleAuthorized(
-    LEDGER_EXPORT,
-    assertMainRendererSender,
+  handle(
+    api.ledgerExport,
     async (
       _event,
       rawOptions: unknown,

@@ -3,12 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BrowserWindow, screen, app } from "electron";
 import ctx from "./context";
-import {
-  assertMainRendererSender,
-  assertOverlayRendererSender,
-  handleAuthorized,
-  onAuthorized,
-} from "./ipcSecurity";
+
 import { createOverlayScanController } from "./overlay/scan";
 import { createRelicSelectionController } from "./overlay/relicSelection";
 import {
@@ -46,17 +41,14 @@ import {
   isRelicRewardsOverlayEnabled,
   overlaysStartInteractive,
 } from "../config/runtime/overlaySettings";
-import {
-  OVERLAY_CLOSE,
-  OVERLAY_GET_PRICE,
-  OVERLAY_INTERACTION_MODE,
-  OVERLAY_GET_DRAG_HINT,
-  TOGGLE_OVERLAY,
-  SIMULATE_RELIC_TRIGGER,
-  OVERLAY_PUSH_RELIC_FILTERS,
-  RELIC_REWARD_CONTENT_HEIGHT,
-} from "../config/shared/ipcChannels";
+import { OVERLAY_INTERACTION_MODE } from "../config/shared/ipcChannels";
 import { REWARD_OVERLAY_CANVAS } from "../config/shared/rewardOverlayLayout";
+import { handle, listen } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+import { overlayRoutes } from "../config/shared/overlayIpcRoutes";
+
+const { api } = mainWindowRoutes;
+const { overlay } = overlayRoutes;
 
 const log = withScope("rewardOverlayIpc");
 
@@ -267,18 +259,14 @@ export function onRelicSelectionClose(): void {
 }
 
 export function register(pushOverlayThemeVars: () => void): void {
-  onAuthorized(
-    RELIC_REWARD_CONTENT_HEIGHT,
-    assertOverlayRendererSender,
-    (event, height: unknown) => {
-      if (overlayKindOf(event.sender.id) !== "reward") return;
-      if (typeof height !== "number" || !Number.isFinite(height) || height <= 0 || height > 10_000)
-        return;
-      rewardWindowsController.fitOverlayContentHeight(height);
-    },
-  );
+  listen(overlay.reportContentHeight, (event, height: unknown) => {
+    if (overlayKindOf(event.sender.id) !== "reward") return;
+    if (typeof height !== "number" || !Number.isFinite(height) || height <= 0 || height > 10_000)
+      return;
+    rewardWindowsController.fitOverlayContentHeight(height);
+  });
 
-  onAuthorized(OVERLAY_CLOSE, assertOverlayRendererSender, (event) => {
+  listen(overlay.close, (event) => {
     rewardWindowsController.clearOverlayAutoHideTimer();
     plannerWindowsController.clearOverlayAutoHideTimer();
     relicSelectionController.suppressReopenForClose?.();
@@ -291,7 +279,7 @@ export function register(pushOverlayThemeVars: () => void): void {
     if (isRewardPairShown()) resetOverlayInteraction("close-button");
   });
 
-  handleAuthorized(OVERLAY_GET_DRAG_HINT, assertOverlayRendererSender, async () => {
+  handle(overlay.getDragHint, async () => {
     // Native Wayland delivers no global hotkeys, so only the Settings switch unlocks overlays.
     const viaSettings = isNativeWayland();
     return {
@@ -304,21 +292,17 @@ export function register(pushOverlayThemeVars: () => void): void {
     };
   });
 
-  handleAuthorized(
-    OVERLAY_GET_PRICE,
-    assertOverlayRendererSender,
-    async (_event, slug: unknown) => {
-      if (typeof slug === "string") {
-        const cached = wfmStatsPrice.getCachedPriceBySlug(slug);
-        if (cached != null) return cached;
-        const snapshot = relicSelectionController.getSnapshotPrice(slug);
-        if (snapshot != null) return snapshot;
-      }
-      return wfmStatsPrice.fetchPriceBySlug(slug);
-    },
-  );
+  handle(overlay.getPrice, async (_event, slug: unknown) => {
+    if (typeof slug === "string") {
+      const cached = wfmStatsPrice.getCachedPriceBySlug(slug);
+      if (cached != null) return cached;
+      const snapshot = relicSelectionController.getSnapshotPrice(slug);
+      if (snapshot != null) return snapshot;
+    }
+    return wfmStatsPrice.fetchPriceBySlug(slug);
+  });
 
-  onAuthorized(TOGGLE_OVERLAY, assertMainRendererSender, () => {
+  listen(api.toggleOverlay, () => {
     if (!isRelicRewardsOverlayEnabled(ctx.overlaySettings)) return;
     rewardWindowsController.clearOverlayAutoHideTimer();
     if (!overlayWindow("reward")) {
@@ -333,15 +317,11 @@ export function register(pushOverlayThemeVars: () => void): void {
     }
   });
 
-  onAuthorized(SIMULATE_RELIC_TRIGGER, assertMainRendererSender, () => {
+  listen(api.simulateRelicTrigger, () => {
     onRelicRewardTrigger("simulate", 0, pushOverlayThemeVars, async () => {});
   });
 
-  onAuthorized(
-    OVERLAY_PUSH_RELIC_FILTERS,
-    assertMainRendererSender,
-    (_event, rawFilters: unknown) => {
-      relicSelectionController.setDesktopFilters(rawFilters);
-    },
-  );
+  listen(api.pushRelicFilters, (_event, rawFilters: unknown) => {
+    relicSelectionController.setDesktopFilters(rawFilters);
+  });
 }

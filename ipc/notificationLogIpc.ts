@@ -1,15 +1,14 @@
 import ctx from "./context";
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
+
 import { normalizeErrorMessage } from "../config/shared/errors";
 import { withScope } from "../services/logger";
 import * as notificationLog from "../services/notificationLog";
-import {
-  NOTIFICATION_HISTORY_ADDED,
-  NOTIFICATION_HISTORY_CLEAR,
-  NOTIFICATION_HISTORY_GET,
-  NOTIFICATION_HISTORY_REMOVE,
-} from "../config/shared/ipcChannels";
+import { NOTIFICATION_HISTORY_ADDED } from "../config/shared/ipcChannels";
 import type { NotificationKind } from "../config/shared/notifications";
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 const log = withScope("notificationLogIpc");
 
@@ -26,15 +25,13 @@ export function recordNotification(kind: NotificationKind, title: string, body: 
 }
 
 function register(): void {
-  handleAuthorized(NOTIFICATION_HISTORY_GET, assertMainRendererSender, () =>
-    notificationLog.getAll(),
-  );
+  handle(api.getNotificationHistory, () => notificationLog.getAll());
 
-  handleAuthorized(NOTIFICATION_HISTORY_CLEAR, assertMainRendererSender, () => {
+  handle(api.clearNotificationHistory, () => {
     notificationLog.clear();
   });
 
-  handleAuthorized(NOTIFICATION_HISTORY_REMOVE, assertMainRendererSender, (_event, id: unknown) =>
+  handle(api.removeNotificationEntry, (_event, id: unknown) =>
     typeof id === "string" && id ? notificationLog.remove(id) : false,
   );
 }

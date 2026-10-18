@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeEvent, makeWindowStub } from "./senderGuardHelpers";
 import type { LedgerImportPreview, LedgerPage } from "../../config/shared/tradeLedgerTypes";
 import type { TradeEvent } from "../../config/shared/statsTypes";
+import { mainWindowRoutes } from "../../config/shared/ipcRoutes";
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown;
 interface OpenOptions {
@@ -235,11 +236,9 @@ describe("ledger IPC boundary", () => {
 
   it("takes the id and the patch as the two positional args the preload sends", async () => {
     const { tracker } = await setup();
-    const preload = fs.readFileSync(path.join(__dirname, "..", "..", "preload.ts"), "utf-8");
-    // The bridge must not wrap the args in one object: the handler reads them
+    // The route must not wrap the args in one object: the handler reads them
     // positionally, and a wrapped payload only ever answered "Invalid row id.".
-    expect(preload).toContain('ledgerUpdateEvent: inv<"ledgerUpdateEvent">(LEDGER_UPDATE_EVENT)');
-    expect(preload).not.toMatch(/LEDGER_UPDATE_EVENT,\s*\{/);
+    expect(mainWindowRoutes.api.ledgerUpdateEvent.pack).toBeUndefined();
 
     expect(await invoke("ledger:update-event", "a", { platChange: 5 })).toEqual({ ok: true });
     expect(tracker.getTradeLog().find((e) => e.id === "a")?.platChange).toBe(5);

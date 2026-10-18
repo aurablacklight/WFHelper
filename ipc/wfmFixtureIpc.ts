@@ -1,8 +1,7 @@
 // E2E-only in-memory WFM fixture, disabled in packaged builds.
 import fs from "node:fs";
-import { app } from "electron";
+import { app, type IpcMainInvokeEvent } from "electron";
 
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
 import {
   parseCloseOrderPayload,
   parseSetVisiblePayload,
@@ -10,23 +9,19 @@ import {
 } from "./wfmValidators";
 import { withScope } from "../services/logger";
 import type { WfmContract } from "../config/shared/wfmContracts";
-import {
-  WFM_SIGNIN,
-  WFM_SIGNOUT,
-  WFM_SESSION,
-  WFM_GET_ORDERS,
-  WFM_GET_CONTRACTS,
-  WFM_CREATE_ORDER,
-  WFM_UPDATE_ORDER,
-  WFM_DELETE_ORDER,
-  WFM_CLOSE_ORDER,
-  WFM_SET_VISIBLE,
-  WFM_SEARCH_ITEMS,
-  WFM_LOOKUP_ITEM,
-  WFM_GET_ME,
-  WFM_SET_STATUS,
-  WFM_PRESENCE_STATE,
-} from "../config/shared/ipcChannels";
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+import type { InvokeRoute, Untrusted, WireArgs } from "../config/shared/ipcRoute";
+
+const { api, tradeApi } = mainWindowRoutes;
+
+/** Some fixture answers are thinner than the live service's, so they skip the answer check. */
+function stub<R extends InvokeRoute>(
+  route: R,
+  handler: (event: IpcMainInvokeEvent, ...args: Untrusted<WireArgs<R>>) => unknown,
+): void {
+  handle(route, handler as never);
+}
 
 const log = withScope("wfmFixtureIpc");
 
@@ -97,21 +92,21 @@ export function registerWfmFixtures(): boolean {
   };
   syncFixtureFromDisk();
 
-  handleAuthorized(WFM_SIGNIN, assertMainRendererSender, async () => FIXTURE_SESSION);
-  handleAuthorized(WFM_SIGNOUT, assertMainRendererSender, async () => ({
+  handle(api.wfmSignIn, async () => FIXTURE_SESSION);
+  stub(api.wfmSignOut, async () => ({
     loggedIn: false,
     userName: null,
     platform: "pc",
   }));
-  handleAuthorized(WFM_SESSION, assertMainRendererSender, async () => FIXTURE_SESSION);
-  handleAuthorized(WFM_GET_ORDERS, assertMainRendererSender, async () => {
+  handle(api.wfmGetSession, async () => FIXTURE_SESSION);
+  handle(api.wfmGetOrders, async () => {
     syncFixtureFromDisk();
     return {
       sell: orders.sell.map((entry) => ({ ...entry })),
       buy: orders.buy.map((entry) => ({ ...entry })),
     };
   });
-  handleAuthorized(WFM_GET_CONTRACTS, assertMainRendererSender, async () => {
+  handle(api.wfmGetContracts, async () => {
     syncFixtureFromDisk();
     return {
       contracts: orders.contracts.map((entry) => ({ ...entry })),
@@ -120,10 +115,10 @@ export function registerWfmFixtures(): boolean {
       hasMore: false,
     };
   });
-  handleAuthorized(WFM_CREATE_ORDER, assertMainRendererSender, async () => ({
+  handle(tradeApi.wfmCreateOrder, async () => ({
     error: "Order creation is not available in fixture mode.",
   }));
-  handleAuthorized(WFM_UPDATE_ORDER, assertMainRendererSender, async (_event, payload) => {
+  stub(tradeApi.wfmUpdateOrder, async (_event, payload) => {
     const parsed = parseUpdateOrderPayload(payload);
     if (!parsed) return { error: "Invalid update-order payload." };
     const order = allOrders().find((entry) => entry.id === parsed.orderId);
@@ -135,13 +130,13 @@ export function registerWfmFixtures(): boolean {
     if (typeof parsed.updates.subtype === "string") order.subtype = parsed.updates.subtype;
     return { ok: true };
   });
-  handleAuthorized(WFM_DELETE_ORDER, assertMainRendererSender, async (_event, payload) => {
+  stub(tradeApi.wfmDeleteOrder, async (_event, payload) => {
     const orderId = (payload as { orderId?: unknown } | null)?.orderId;
     orders.sell = orders.sell.filter((entry) => entry.id !== orderId);
     orders.buy = orders.buy.filter((entry) => entry.id !== orderId);
     return { ok: true };
   });
-  handleAuthorized(WFM_CLOSE_ORDER, assertMainRendererSender, async (_event, payload) => {
+  handle(tradeApi.wfmCloseOrder, async (_event, payload) => {
     const parsed = parseCloseOrderPayload(payload);
     if (!parsed) return { error: "Invalid close-order payload." };
     const order = allOrders().find((entry) => entry.id === parsed.orderId);
@@ -157,7 +152,7 @@ export function registerWfmFixtures(): boolean {
     }
     return { closed: true, id: order.id };
   });
-  handleAuthorized(WFM_SET_VISIBLE, assertMainRendererSender, async (_event, payload) => {
+  stub(tradeApi.wfmSetVisible, async (_event, payload) => {
     const parsed = parseSetVisiblePayload(payload);
     if (!parsed) return { error: "Invalid set-visible payload." };
     for (const order of allOrders()) {
@@ -165,8 +160,8 @@ export function registerWfmFixtures(): boolean {
     }
     return { ok: true };
   });
-  handleAuthorized(WFM_SEARCH_ITEMS, assertMainRendererSender, async () => []);
-  handleAuthorized(WFM_LOOKUP_ITEM, assertMainRendererSender, async (_event, payload) => {
+  handle(api.wfmSearchItems, async () => []);
+  stub(api.wfmLookupItemBySlug, async (_event, payload) => {
     const slug = (payload as { slug?: unknown } | null)?.slug;
     const order = allOrders().find((entry) => entry.itemUrlName === slug);
     if (!order) return { error: "Item not found in fixture." };
@@ -183,9 +178,9 @@ export function registerWfmFixtures(): boolean {
           : [],
     };
   });
-  handleAuthorized(WFM_GET_ME, assertMainRendererSender, async () => ({ status: "online" }));
-  handleAuthorized(WFM_SET_STATUS, assertMainRendererSender, async () => ({ ok: true }));
-  handleAuthorized(WFM_PRESENCE_STATE, assertMainRendererSender, async () => ({
+  stub(api.wfmGetMe, async () => ({ status: "online" }));
+  stub(tradeApi.wfmSetStatus, async () => ({ ok: true }));
+  stub(api.wfmPresenceState, async () => ({
     status: "online",
     expiresAt: null,
     autoActive: false,

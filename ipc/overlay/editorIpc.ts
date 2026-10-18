@@ -2,13 +2,7 @@ import { app } from "electron";
 
 import { overlayPreviewUrl } from "../../services/overlayPreview";
 import ctx from "../context";
-import {
-  assertLocalizedOverlaySender,
-  assertMainRendererSender,
-  assertOverlayRendererSender,
-  handleAuthorized,
-  onAuthorized,
-} from "../ipcSecurity";
+
 import { overlayMessages } from "../overlayI18n";
 import { createOverlayEditor } from "./rewardEditor";
 import { overlayKindOf, overlayPlacementRect, overlayWindow, repositionOverlay } from "./registry";
@@ -20,25 +14,23 @@ import {
   type OverlayLayoutKind,
   type OverlayEditState,
 } from "../../config/shared/overlayLayout";
-import {
-  OVERLAY_EDIT_BEGIN,
-  OVERLAY_EDIT_PREVIEW,
-  OVERLAY_EDIT_UPDATE,
-  OVERLAY_EDIT_END,
-  OVERLAY_EDIT_STATE,
-  OVERLAY_LAYOUT_GET,
-  RELIC_REWARD_PRESENTATION,
-} from "../../config/shared/ipcChannels";
+import { OVERLAY_EDIT_STATE } from "../../config/shared/ipcChannels";
 import {
   normalizeRewardPresentation,
   type RewardPresentation,
 } from "../../config/shared/rewardPresentation";
+import { handle, listen } from "../routeHandlers";
+import { mainWindowRoutes } from "../../config/shared/ipcRoutes";
+import { overlayRoutes } from "../../config/shared/overlayIpcRoutes";
+
+const { api } = mainWindowRoutes;
+const { overlay, overlayLayoutApi } = overlayRoutes;
 
 export function registerOverlayEditor(
   persist: Parameters<typeof createOverlayEditor>[0]["persist"],
 ) {
   let lastReward: RewardPresentation | null = null;
-  onAuthorized(RELIC_REWARD_PRESENTATION, assertOverlayRendererSender, (event, raw: unknown) => {
+  listen(overlay.reportPresentation, (event, raw: unknown) => {
     if (overlayKindOf(event.sender.id) !== "reward") return;
     const presentation = normalizeRewardPresentation(raw);
     if (presentation) lastReward = presentation;
@@ -57,10 +49,8 @@ export function registerOverlayEditor(
     if (!isOverlayLayoutKind(raw)) throw new Error("Invalid overlay kind");
     return raw;
   };
-  handleAuthorized(OVERLAY_EDIT_BEGIN, assertMainRendererSender, (event, raw: unknown) =>
-    editor.begin(event.sender, kindFrom(raw)),
-  );
-  handleAuthorized(OVERLAY_EDIT_PREVIEW, assertMainRendererSender, (_event, raw: unknown) => {
+  handle(api.beginOverlayEdit, (event, raw: unknown) => editor.begin(event.sender, kindFrom(raw)));
+  handle(api.getOverlayPreview, (_event, raw: unknown) => {
     const kind = kindFrom(raw);
     const descriptor = getOverlayDescriptor(kind);
     const reward = kind === "reward" ? editor.previewReward() : null;
@@ -87,7 +77,10 @@ export function registerOverlayEditor(
       descriptor: reward
         ? {
             ...descriptor,
-            variants: [...descriptor.variants, { value: "last", key: "rewardEditor.previewLast" }],
+            variants: [
+              ...descriptor.variants,
+              { value: "last", key: "rewardEditor.previewLast" as const },
+            ],
           }
         : descriptor,
       canvas,
@@ -97,17 +90,13 @@ export function registerOverlayEditor(
       defaultFieldStyle: DEFAULT_OVERLAY_FIELD_STYLE,
     };
   });
-  handleAuthorized(
-    OVERLAY_EDIT_UPDATE,
-    assertMainRendererSender,
-    (event, token: unknown, command: unknown) => editor.update(token, command, event.sender),
+  handle(api.updateOverlayEdit, (event, token: unknown, command: unknown) =>
+    editor.update(token, command, event.sender),
   );
-  handleAuthorized(
-    OVERLAY_EDIT_END,
-    assertMainRendererSender,
-    (event, token: unknown, save: unknown) => editor.end(token, save, event.sender),
+  handle(api.endOverlayEdit, (event, token: unknown, save: unknown) =>
+    editor.end(token, save, event.sender),
   );
-  handleAuthorized(OVERLAY_LAYOUT_GET, assertLocalizedOverlaySender, (event) => {
+  handle(overlayLayoutApi.getLayout, (event) => {
     const kind = overlayKindOf(event.sender.id);
     if (!kind) throw new Error("Unknown overlay sender");
     return editor.savedState(kind);

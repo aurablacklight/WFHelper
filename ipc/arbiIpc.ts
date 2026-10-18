@@ -1,26 +1,17 @@
 import fs from "node:fs";
 import { dialog } from "electron";
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
+
 import ctx from "./context";
 import { asRunId, registerRunTrackerIpc } from "./runTrackerIpc";
 import * as arbiRunTracker from "../services/arbiRunTracker";
 import { importEeLog } from "../services/arbiLogImporter";
 import type { ArbiImportResult, ArbiRunsPayload } from "../config/shared/arbiTypes";
-import {
-  ARBI_GET_RUNS,
-  ARBI_REFRESH_RUNS,
-  ARBI_SET_VITUS,
-  ARBI_SET_TAGS,
-  ARBI_SET_NOTES,
-  ARBI_DELETE_RUN,
-  ARBI_DELETE_LOG,
-  ARBI_EXPORT_LOG,
-  ARBI_IMPORT_LOG,
-  ARBI_SAVE_IMAGE,
-  ARBI_SHOW_LOG_IN_FOLDER,
-} from "../config/shared/ipcChannels";
 import { normalizeErrorMessage } from "../config/shared/errors";
 import { withScope } from "../services/logger";
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 const log = withScope("arbiIpc");
 
@@ -39,16 +30,16 @@ function register(): void {
   registerRunTrackerIpc<ArbiRunsPayload, ArbiImportResult>({
     log,
     label: "[Arbi]",
-    channels: {
-      getRuns: ARBI_GET_RUNS,
-      refreshRuns: ARBI_REFRESH_RUNS,
-      setTags: ARBI_SET_TAGS,
-      setNotes: ARBI_SET_NOTES,
-      deleteRun: ARBI_DELETE_RUN,
-      deleteLog: ARBI_DELETE_LOG,
-      exportLog: ARBI_EXPORT_LOG,
-      importLog: ARBI_IMPORT_LOG,
-      showLogInFolder: ARBI_SHOW_LOG_IN_FOLDER,
+    routes: {
+      getRuns: api.getArbiRuns,
+      refreshRuns: api.refreshArbiRuns,
+      setTags: api.setArbiRunTags,
+      setNotes: api.setArbiRunNotes,
+      deleteRun: api.deleteArbiRun,
+      deleteLog: api.deleteArbiRunLog,
+      exportLog: api.exportArbiRunLog,
+      importLog: api.importArbiLog,
+      showLogInFolder: api.showArbiRunLogInFolder,
     },
     tracker: {
       getRuns: arbiRunTracker.getRuns,
@@ -64,50 +55,38 @@ function register(): void {
     exportBaseName,
   });
 
-  handleAuthorized(
-    ARBI_SET_VITUS,
-    assertMainRendererSender,
-    (_event, id: unknown, vitus: unknown) => {
-      const runId = asRunId(id);
-      if (!runId) return null;
-      let value: number | null = null;
-      if (typeof vitus === "number") {
-        if (!Number.isFinite(vitus) || vitus < 0 || vitus > MAX_VITUS) return null;
-        value = Math.round(vitus);
-      } else if (vitus !== null) {
-        return null;
-      }
-      return arbiRunTracker.setRunVitus(runId, value);
-    },
-  );
+  handle(api.setArbiRunVitus, (_event, id: unknown, vitus: unknown) => {
+    const runId = asRunId(id);
+    if (!runId) return null;
+    let value: number | null = null;
+    if (typeof vitus === "number") {
+      if (!Number.isFinite(vitus) || vitus < 0 || vitus > MAX_VITUS) return null;
+      value = Math.round(vitus);
+    } else if (vitus !== null) {
+      return null;
+    }
+    return arbiRunTracker.setRunVitus(runId, value);
+  });
 
-  handleAuthorized(
-    ARBI_SAVE_IMAGE,
-    assertMainRendererSender,
-    async (_event, id: unknown, png: unknown) => {
-      const runId = asRunId(id);
-      if (!runId || !ctx.mainWindow) return { ok: false };
-      if (
-        !(png instanceof Uint8Array) ||
-        png.byteLength === 0 ||
-        png.byteLength > MAX_IMAGE_BYTES
-      ) {
-        return { ok: false };
-      }
-      const result = await dialog.showSaveDialog(ctx.mainWindow, {
-        defaultPath: `${exportBaseName(runId)}.png`,
-        filters: [{ name: "PNG image", extensions: ["png"] }],
-      });
-      if (result.canceled || !result.filePath) return { ok: false };
-      try {
-        fs.writeFileSync(result.filePath, Buffer.from(png.buffer, png.byteOffset, png.byteLength));
-        return { ok: true };
-      } catch (err) {
-        log.warn("[Arbi] Image export failed:", normalizeErrorMessage(err));
-        return { ok: false };
-      }
-    },
-  );
+  handle(api.saveArbiRunImage, async (_event, id: unknown, png: unknown) => {
+    const runId = asRunId(id);
+    if (!runId || !ctx.mainWindow) return { ok: false };
+    if (!(png instanceof Uint8Array) || png.byteLength === 0 || png.byteLength > MAX_IMAGE_BYTES) {
+      return { ok: false };
+    }
+    const result = await dialog.showSaveDialog(ctx.mainWindow, {
+      defaultPath: `${exportBaseName(runId)}.png`,
+      filters: [{ name: "PNG image", extensions: ["png"] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false };
+    try {
+      fs.writeFileSync(result.filePath, Buffer.from(png.buffer, png.byteOffset, png.byteLength));
+      return { ok: true };
+    } catch (err) {
+      log.warn("[Arbi] Image export failed:", normalizeErrorMessage(err));
+      return { ok: false };
+    }
+  });
 }
 
 export { register };

@@ -1,18 +1,9 @@
 import ctx from "./context";
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
+
 import { withScope } from "../services/logger";
 import * as tradeWorkbench from "../services/tradeWorkbench";
 import { normalizeErrorMessage } from "../config/shared/errors";
-import {
-  WORKBENCH_ACK_OVERRIDE,
-  WORKBENCH_CANCEL_RUN,
-  WORKBENCH_EXECUTE_PLAN,
-  WORKBENCH_GET_STATE,
-  WORKBENCH_PREVIEW_PLAN,
-  WORKBENCH_RECONCILE,
-  WORKBENCH_RESOLVE_REVIEW,
-  WORKBENCH_STATE_EVENT,
-} from "../config/shared/ipcChannels";
+import { WORKBENCH_STATE_EVENT } from "../config/shared/ipcChannels";
 import {
   parseWorkbenchOverrideAck,
   parseWorkbenchPlan,
@@ -21,6 +12,10 @@ import {
   validateWorkbenchPlan,
   type WorkbenchState,
 } from "../config/shared/tradeWorkbenchTypes";
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api, tradeApi } = mainWindowRoutes;
 
 const log = withScope("tradeWorkbenchIpc");
 
@@ -34,11 +29,9 @@ function register(): void {
   tradeWorkbench.configureTradeWorkbench({ onState: pushState });
   tradeWorkbench.initTradeWorkbench();
 
-  handleAuthorized(WORKBENCH_GET_STATE, assertMainRendererSender, () =>
-    tradeWorkbench.getWorkbenchState(),
-  );
+  handle(api.workbenchGetState, () => tradeWorkbench.getWorkbenchState());
 
-  handleAuthorized(WORKBENCH_PREVIEW_PLAN, assertMainRendererSender, (_event, plan, safety) => {
+  handle(api.workbenchPreviewPlan, (_event, plan, safety) => {
     const parsedPlan = parseWorkbenchPlan(plan);
     const parsedSafety = parseWorkbenchSafetySnapshot(safety);
     if (!parsedPlan || !parsedSafety) {
@@ -48,7 +41,7 @@ function register(): void {
     return validateWorkbenchPlan(parsedPlan, parsedSafety);
   });
 
-  handleAuthorized(WORKBENCH_EXECUTE_PLAN, assertMainRendererSender, (_event, plan, safety) => {
+  handle(tradeApi.workbenchExecutePlan, (_event, plan, safety) => {
     const parsedPlan = parseWorkbenchPlan(plan);
     const parsedSafety = parseWorkbenchSafetySnapshot(safety);
     if (!parsedPlan || !parsedSafety) {
@@ -62,11 +55,9 @@ function register(): void {
     return tradeWorkbench.executeWorkbenchPlan(parsedPlan, parsedSafety);
   });
 
-  handleAuthorized(WORKBENCH_CANCEL_RUN, assertMainRendererSender, () =>
-    tradeWorkbench.cancelWorkbenchRun(),
-  );
+  handle(api.workbenchCancelRun, () => tradeWorkbench.cancelWorkbenchRun());
 
-  handleAuthorized(WORKBENCH_ACK_OVERRIDE, assertMainRendererSender, (_event, payload) => {
+  handle(api.workbenchAcknowledgeOverride, (_event, payload) => {
     const ack = parseWorkbenchOverrideAck(payload);
     if (!ack) {
       log.warn("[Security] workbench:ack-override blocked due to invalid payload");
@@ -75,7 +66,7 @@ function register(): void {
     return tradeWorkbench.acknowledgeWorkbenchOverride(ack);
   });
 
-  handleAuthorized(WORKBENCH_RECONCILE, assertMainRendererSender, async () => {
+  handle(api.workbenchReconcile, async () => {
     try {
       return await tradeWorkbench.reconcileWorkbench();
     } catch (err) {
@@ -85,7 +76,7 @@ function register(): void {
     }
   });
 
-  handleAuthorized(WORKBENCH_RESOLVE_REVIEW, assertMainRendererSender, (_event, payload) => {
+  handle(api.workbenchResolveReview, (_event, payload) => {
     const parsed = parseWorkbenchResolveReview(payload);
     if (!parsed) {
       log.warn("[Security] workbench:resolve-review blocked due to invalid payload");

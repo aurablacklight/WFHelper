@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { dialog, shell } from "electron";
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
+import { handle } from "./routeHandlers";
+import type { InvokeRoute } from "../config/shared/ipcRoute";
 import ctx from "./context";
 import { forceEeLogPoll } from "../services/eeLogMonitor";
 import type { ScopedLogger } from "../services/logger";
@@ -17,20 +18,7 @@ export function asRunId(raw: unknown): string | null {
   return typeof raw === "string" && raw.length > 0 && raw.length <= 64 ? raw : null;
 }
 
-interface RunTrackerChannels {
-  getRuns: string;
-  refreshRuns: string;
-  setTags: string;
-  setNotes: string;
-  deleteRun: string;
-  deleteLog: string;
-  exportLog: string;
-  importLog: string;
-  showLogInFolder: string;
-}
-
-/** What the list handlers answer with. Each feature passes its own IPC contract
- * type, so a payload that drifted from the renderer's fails tsc here. */
+/** What the list handlers answer with. */
 interface RunsPayloadShape {
   runs: unknown[];
   diskUsageBytes: number;
@@ -39,6 +27,34 @@ interface RunsPayloadShape {
 interface ImportResultShape<TRunsPayload extends RunsPayloadShape> {
   imported: TRunsPayload["runs"];
   skipped: number;
+}
+
+type RunOf<TRunsPayload extends RunsPayloadShape> = TRunsPayload["runs"][number];
+type RunsPayloadOf<TRunsPayload extends RunsPayloadShape> = {
+  runs: TRunsPayload["runs"];
+  diskUsageBytes: number;
+};
+
+/** The routes every run tracker answers. Each feature passes its own, so a payload
+ * that drifted from the renderer's contract fails tsc here. */
+interface RunTrackerRoutes<TRunsPayload extends RunsPayloadShape> {
+  getRuns: InvokeRoute<[], RunsPayloadOf<TRunsPayload>, []>;
+  refreshRuns: InvokeRoute<[], RunsPayloadOf<TRunsPayload>, []>;
+  setTags: InvokeRoute<
+    [id: string, tags: string[]],
+    RunOf<TRunsPayload> | null,
+    [id: string, tags: string[]]
+  >;
+  setNotes: InvokeRoute<
+    [id: string, notes: string],
+    RunOf<TRunsPayload> | null,
+    [id: string, notes: string]
+  >;
+  deleteRun: InvokeRoute<[id: string], { ok: boolean }, [id: string]>;
+  deleteLog: InvokeRoute<[id: string], RunOf<TRunsPayload> | null, [id: string]>;
+  exportLog: InvokeRoute<[id: string], { ok: boolean }, [id: string]>;
+  importLog: InvokeRoute<[], ImportResultShape<TRunsPayload>, []>;
+  showLogInFolder: InvokeRoute<[id: string], { ok: boolean }, [id: string]>;
 }
 
 /** The slice of a run tracker module the shared handlers call. */
@@ -60,7 +76,7 @@ interface RunTrackerIpcSpec<
   log: ScopedLogger;
   /** Log prefix, e.g. "[Arbi]". */
   label: string;
-  channels: RunTrackerChannels;
+  routes: RunTrackerRoutes<TRunsPayload>;
   tracker: RunTrackerApi<TRunsPayload>;
   importLog(filePath: string): Promise<TImportResult>;
   /** Filesystem-safe export name without extension, e.g. "Casta_Ceres_2026-07-04_21-30-15". */
@@ -68,14 +84,14 @@ interface RunTrackerIpcSpec<
 }
 
 /** Registers the run list, annotation, delete, import and export handlers every
- * EE.log run tracker exposes; a feature adds its own channels on top. */
+ * EE.log run tracker exposes; a feature adds its own routes on top. */
 export function registerRunTrackerIpc<
   TRunsPayload extends RunsPayloadShape,
   TImportResult extends ImportResultShape<TRunsPayload>,
 >(spec: RunTrackerIpcSpec<TRunsPayload, TImportResult>): void {
-  const { log, label: L, channels, tracker } = spec;
+  const { log, label: L, routes, tracker } = spec;
 
-  const runsPayload = (): { runs: TRunsPayload["runs"]; diskUsageBytes: number } => ({
+  const runsPayload = (): RunsPayloadOf<TRunsPayload> => ({
     runs: tracker.getRuns(),
     diskUsageBytes: tracker.getDiskUsageBytes(),
   });
@@ -97,9 +113,9 @@ export function registerRunTrackerIpc<
     }
   }
 
-  handleAuthorized(channels.getRuns, assertMainRendererSender, () => runsPayload());
+  handle(routes.getRuns, () => runsPayload());
 
-  handleAuthorized(channels.refreshRuns, assertMainRendererSender, async () => {
+  handle(routes.refreshRuns, async () => {
     try {
       forceEeLogPoll();
     } catch (err) {
@@ -111,37 +127,29 @@ export function registerRunTrackerIpc<
 
   // normalizeRunTags and normalizeRunNotes are total over unknown input (non-arrays -> [],
   // non-strings -> "", capped at 2000 chars), so neither handler guards ahead of them.
-  handleAuthorized(
-    channels.setTags,
-    assertMainRendererSender,
-    (_event, id: unknown, tags: unknown) => {
-      const runId = asRunId(id);
-      if (!runId) return null;
-      return tracker.setRunTags(runId, normalizeRunTags(tags));
-    },
-  );
+  handle(routes.setTags, (_event, id: unknown, tags: unknown) => {
+    const runId = asRunId(id);
+    if (!runId) return null;
+    return tracker.setRunTags(runId, normalizeRunTags(tags));
+  });
 
-  handleAuthorized(
-    channels.setNotes,
-    assertMainRendererSender,
-    (_event, id: unknown, notes: unknown) => {
-      const runId = asRunId(id);
-      if (!runId) return null;
-      return tracker.setRunNotes(runId, normalizeRunNotes(notes));
-    },
-  );
+  handle(routes.setNotes, (_event, id: unknown, notes: unknown) => {
+    const runId = asRunId(id);
+    if (!runId) return null;
+    return tracker.setRunNotes(runId, normalizeRunNotes(notes));
+  });
 
-  handleAuthorized(channels.deleteRun, assertMainRendererSender, (_event, id: unknown) => {
+  handle(routes.deleteRun, (_event, id: unknown) => {
     const runId = asRunId(id);
     return { ok: runId ? tracker.deleteRun(runId) : false };
   });
 
-  handleAuthorized(channels.deleteLog, assertMainRendererSender, (_event, id: unknown) => {
+  handle(routes.deleteLog, (_event, id: unknown) => {
     const runId = asRunId(id);
     return runId ? tracker.deleteRunLog(runId) : null;
   });
 
-  handleAuthorized(channels.exportLog, assertMainRendererSender, async (_event, id: unknown) => {
+  handle(routes.exportLog, async (_event, id: unknown) => {
     const runId = asRunId(id);
     if (!runId) return { ok: false };
     const gzPath = tracker.getRunLogPath(runId);
@@ -161,7 +169,7 @@ export function registerRunTrackerIpc<
     }
   });
 
-  handleAuthorized(channels.importLog, assertMainRendererSender, async () => {
+  handle(routes.importLog, async () => {
     const empty: ImportResultShape<TRunsPayload> = { imported: [], skipped: 0 };
     if (!ctx.mainWindow) return empty;
     const result = await dialog.showOpenDialog(ctx.mainWindow, {
@@ -176,7 +184,7 @@ export function registerRunTrackerIpc<
     return spec.importLog(result.filePaths[0]);
   });
 
-  handleAuthorized(channels.showLogInFolder, assertMainRendererSender, (_event, id: unknown) => {
+  handle(routes.showLogInFolder, (_event, id: unknown) => {
     const runId = asRunId(id);
     const gzPath = runId ? tracker.getRunLogPath(runId) : null;
     if (gzPath) shell.showItemInFolder(path.resolve(gzPath));

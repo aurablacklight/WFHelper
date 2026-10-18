@@ -1,9 +1,10 @@
-import type { PreloadAPI, TradePreloadAPI } from "./preload.js";
+import type { Bridge } from "../../config/shared/ipcRoute.js";
+import type { ApiRoutes, TradeApiRoutes } from "../../config/shared/ipcRoutes.js";
 
 declare global {
   interface Window {
-    api: PreloadAPI;
-    tradeApi: TradePreloadAPI;
+    api: Bridge<ApiRoutes> & { platform: string };
+    tradeApi: Bridge<TradeApiRoutes>;
   }
 
   interface ImportMetaEnv {

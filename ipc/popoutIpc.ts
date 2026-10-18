@@ -6,19 +6,13 @@ import { overlayPreviewFilePaths } from "../services/overlayPreview";
 
 import ctx from "./context";
 import {
-  assertMainRendererSender,
-  handleAuthorized,
   registerPopoutWebContents,
+  setPopoutSenderLookup,
   unregisterPopoutWebContents,
 } from "./ipcSecurity";
-import {
-  POPOUT_CLOSE,
-  POPOUT_CLOSE_ALL,
-  POPOUT_LIST,
-  POPOUT_OPEN,
-  POPOUT_SET_PINNED,
-  POPOUT_STATE_CHANGED,
-} from "../config/shared/ipcChannels";
+import { handle } from "./routeHandlers";
+import { POPOUT_STATE_CHANGED } from "../config/shared/ipcChannels";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
 import {
   parsePopoutBounds,
   parsePopoutTarget,
@@ -297,20 +291,19 @@ function closePopout(target: PopoutTarget): boolean {
   return true;
 }
 
-type PopoutSenderEvent = { sender?: { id?: number } };
-
-/** Only a window this module created may pin itself; never the main window. */
-function assertPopoutSender(event: PopoutSenderEvent, _channel: string): void {
-  const senderId = event?.sender?.id;
-  if (typeof senderId !== "number") throw new Error("Missing IPC sender event metadata");
+function isLivePopout(webContentsId: number): boolean {
   for (const win of popoutWindows.values()) {
-    if (!win.isDestroyed() && win.webContents.id === senderId) return;
+    if (!win.isDestroyed() && win.webContents.id === webContentsId) return true;
   }
-  throw new Error(`Sender webContents id ${senderId} is not a popout window`);
+  return false;
 }
 
+const { api } = mainWindowRoutes;
+
 export function register(): void {
-  handleAuthorized(POPOUT_OPEN, assertMainRendererSender, (_event, ...args: unknown[]) => {
+  setPopoutSenderLookup(isLivePopout);
+
+  handle(api.popoutOpen, (_event, ...args: unknown[]) => {
     const target = parsePopoutTarget(args[0]);
     if (!target) {
       log.warn(`Ignored popout open for unknown target: ${JSON.stringify(args[0] ?? null)}`);
@@ -325,15 +318,15 @@ export function register(): void {
     return { ok: true };
   });
 
-  handleAuthorized(POPOUT_LIST, assertMainRendererSender, () => listOpenPopouts());
+  handle(api.popoutList, () => listOpenPopouts());
 
-  handleAuthorized(POPOUT_CLOSE, assertMainRendererSender, (_event, ...args: unknown[]) => {
+  handle(api.popoutClose, (_event, ...args: unknown[]) => {
     const target = parsePopoutTarget(args[0]);
     if (!target) return { ok: false };
     return { ok: closePopout(target) };
   });
 
-  handleAuthorized(POPOUT_CLOSE_ALL, assertMainRendererSender, () => {
+  handle(api.popoutCloseAll, () => {
     let closed = 0;
     for (const win of [...popoutWindows.values()]) {
       if (win.isDestroyed()) continue;
@@ -343,7 +336,7 @@ export function register(): void {
     return { ok: true, closed };
   });
 
-  handleAuthorized(POPOUT_SET_PINNED, assertPopoutSender, (event, pinned: unknown) => {
+  handle(api.popoutSetPinned, (event, pinned: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const key = targetKeyForWindow(win);
     const target = key ? parsePopoutTargetKey(key) : null;

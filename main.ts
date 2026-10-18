@@ -126,11 +126,8 @@ import * as popoutIpc from "./ipc/popoutIpc";
 import * as trayIpc from "./ipc/trayIpc";
 import { isQuitting, markQuitting, shouldHideOnClose } from "./services/appLifecycle";
 import { applyMainWindowZoom } from "./ipc/mainWindowZoom";
-import { assertMainRendererSender, handleAuthorized, invokeTimingSummary } from "./ipc/ipcSecurity";
+import { invokeTimingSummary } from "./ipc/ipcSecurity";
 import {
-  HELPER_GET_STATUS,
-  HELPER_RUN_NOW,
-  HELPER_DOWNLOAD,
   HELPER_DOWNLOAD_PROGRESS,
   INVENTORY_UPDATED,
   ITEM_DB_UPDATED,
@@ -165,6 +162,10 @@ import {
 } from "./services/sessionHealth";
 import { summarizeCrashDump } from "./services/minidumpSummary";
 import { drainNativeOcr } from "./services/ocrServer";
+import { handle } from "./ipc/routeHandlers";
+import { mainWindowRoutes } from "./config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 // Keep native crash dumps local under userData\Crashes.
 crashReporter.start({ uploadToServer: false });
@@ -560,17 +561,17 @@ function registerIpcHandlers(profileStage: ProfileStage): void {
   });
 
   // Helper runner IPC
-  handleAuthorized(HELPER_GET_STATUS, assertMainRendererSender, () => ({
+  handle(api.getHelperStatus, () => ({
     ...apiHelperRunner.getStatus(),
     inventoryLastModified: inventoryIpc.getLoadedInventoryModifiedAt(),
   }));
-  handleAuthorized(HELPER_RUN_NOW, assertMainRendererSender, async () => {
+  handle(api.runHelperNow, async () => {
     if (inventoryIpc.getInventorySource() === "none") return { ok: false };
     const ok = await apiHelperRunner.runOnce();
     attachInventoryAfterHelperRun(ok);
     return { ok };
   });
-  handleAuthorized(HELPER_DOWNLOAD, assertMainRendererSender, async () => {
+  handle(api.downloadHelper, async () => {
     if (inventoryIpc.getInventorySource() === "none") return { ok: false };
     const ok = await apiHelperRunner.downloadHelper((progress) => {
       if (ctx.mainWindow) {

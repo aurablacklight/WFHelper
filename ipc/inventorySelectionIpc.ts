@@ -1,7 +1,10 @@
-import { assertMainRendererSender, handleAuthorized } from "./ipcSecurity";
 import { sendDesktopNotificationRaw } from "./worldStateIpc";
 import { dispatch } from "../services/notificationChannels";
-import { INVENTORY_SELECTION_COMPLETE } from "../config/shared/ipcChannels";
+
+import { handle } from "./routeHandlers";
+import { mainWindowRoutes } from "../config/shared/ipcRoutes";
+
+const { api } = mainWindowRoutes;
 
 const MAX_NAME_CHARS = 64;
 const MAX_OWNED = 10_000;
@@ -25,21 +28,17 @@ function parsePayload(raw: unknown): SelectionCompletePayload | null {
 }
 
 export function register(): void {
-  handleAuthorized(
-    INVENTORY_SELECTION_COMPLETE,
-    assertMainRendererSender,
-    (_event, payload: unknown) => {
-      const parsed = parsePayload(payload);
-      if (!parsed) return false;
-      // English on purpose: the body is kept in the notification history, which
-      // a language switch must not rewrite.
-      const title = "Bulk sell selection complete";
-      const body = `${parsed.name}: all ${parsed.owned} items owned`;
-      // Kept on the raw sender's default "app" history kind, which also records the entry.
-      dispatch({ source: "inventorySelections", title, body }, () =>
-        sendDesktopNotificationRaw(title, body),
-      );
-      return true;
-    },
-  );
+  handle(api.notifySelectionComplete, (_event, payload: unknown) => {
+    const parsed = parsePayload(payload);
+    if (!parsed) return false;
+    // English on purpose: the body is kept in the notification history, which
+    // a language switch must not rewrite.
+    const title = "Bulk sell selection complete";
+    const body = `${parsed.name}: all ${parsed.owned} items owned`;
+    // Kept on the raw sender's default "app" history kind, which also records the entry.
+    dispatch({ source: "inventorySelections", title, body }, () =>
+      sendDesktopNotificationRaw(title, body),
+    );
+    return true;
+  });
 }
