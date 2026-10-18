@@ -83,11 +83,6 @@ type OverlayContext = {
   overlayInteractiveMode: boolean;
 };
 
-type OverlaySettingsPersistenceOptions = {
-  ctx: Pick<OverlayContext, "overlaySettings">;
-  save: () => void;
-};
-
 type OverlayWindowsControllerOptions = {
   app: typeof import("electron").app;
   BrowserWindow: typeof import("electron").BrowserWindow;
@@ -171,22 +166,6 @@ export function moveOverlayWindowBy(
     return;
   }
   moveWindowBy(win, dx, dy);
-}
-
-export function createOverlayWindowBoundsChangeHandler(
-  options: OverlaySettingsPersistenceOptions,
-): (key: OverlayWindowKey, bounds: OverlaySavedWindowBounds) => void {
-  return (key, bounds) => {
-    options.ctx.overlaySettings = {
-      ...options.ctx.overlaySettings,
-      ...(key === "arbiSummary" ? {} : { overlayDragHintDismissed: true }),
-      overlayWindowBounds: {
-        ...(options.ctx.overlaySettings.overlayWindowBounds || {}),
-        [key]: { ...options.ctx.overlaySettings.overlayWindowBounds?.[key], ...bounds },
-      },
-    };
-    options.save();
-  };
 }
 
 export function createOverlayWindowsController(options: OverlayWindowsControllerOptions) {

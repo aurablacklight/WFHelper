@@ -2,26 +2,15 @@ import { app, BrowserWindow } from "electron";
 import { withScope } from "../../services/logger";
 import * as warframeStatus from "../../services/warframeStatus";
 import { HIDE_IMMINENT_MS } from "./windows";
-import ctx from "../context";
+import { liveOverlayWindows } from "./registry";
 
 const log = withScope("overlayZOrder");
 
 type OverlayWindow = InstanceType<typeof BrowserWindow>;
 
-function overlayWindows(): OverlayWindow[] {
-  return [
-    ctx.overlayWindow,
-    ctx.plannerOverlayWindow,
-    ctx.rivenOverlayLeftWindow,
-    ctx.rivenOverlayRightWindow,
-    ctx.arbiSummaryWindow,
-    ctx.tradeNotificationWindow,
-  ].filter((win): win is OverlayWindow => !!win && !win.isDestroyed());
-}
-
 export function canRaiseOverlayWindows(platform: NodeJS.Platform = process.platform): boolean {
   if (platform !== "win32") return true;
-  const handles = overlayWindows()
+  const handles = liveOverlayWindows()
     .filter((win) => win.isVisible() && win.isFocusable())
     .map((win) => win.getNativeWindowHandle());
   return warframeStatus.isWarframeOrWindowForeground(handles) === true;
@@ -30,7 +19,7 @@ export function canRaiseOverlayWindows(platform: NodeJS.Platform = process.platf
 /** Blank keep-mapped overlays count too: a Deactivate hands the foreground to whichever
  *  visible window is next in z-order, and that is often another overlay. */
 export function returnFocusToWarframe(): boolean {
-  const handles = overlayWindows().map((win) => win.getNativeWindowHandle());
+  const handles = liveOverlayWindows().map((win) => win.getNativeWindowHandle());
   return warframeStatus.restoreWarframeFocus(handles);
 }
 

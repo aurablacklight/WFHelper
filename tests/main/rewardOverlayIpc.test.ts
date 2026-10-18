@@ -89,7 +89,6 @@ vi.mock("../../ipc/ipcSecurity", () => ({
   },
 }));
 vi.mock("../../ipc/overlay/windows", () => ({
-  createOverlayWindowBoundsChangeHandler: () => vi.fn(),
   createOverlayWindowsController: (options: { onPresentationEnd?: () => void }) => {
     const controller: FakeController = {
       options,

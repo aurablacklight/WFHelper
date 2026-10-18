@@ -15,7 +15,20 @@ import { createOverlaySettingsController } from "./overlay/settings";
 import { moveOverlayWindowBy } from "./overlay/windows";
 import { broadcastToRenderers } from "./popoutIpc";
 import { returnFocusToWarframe } from "./overlay/zOrder";
-import { getTradeNotificationPlacementRect, hideTradeNotification } from "./tradeNotificationIpc";
+import { hideTradeNotification } from "./tradeNotificationIpc";
+import {
+  OVERLAY_KINDS,
+  broadcastToOverlays,
+  configureOverlayBoundsPersistence,
+  isOverlayInteractive,
+  markOverlayReady,
+  overlayKindOf,
+  overlayPlacementRect,
+  overlayWindow,
+  repositionOverlay,
+  sendToOverlay,
+  type OverlayKind,
+} from "./overlay/registry";
 import { writeFileAtomicSync } from "../services/atomicFile";
 import { userDataPath } from "../services/userDataPath";
 import { asRecord } from "../config/shared/objectValidation";
@@ -100,8 +113,8 @@ function setOverlayInteractionMode(enabled: boolean, source = "unknown", focus =
   const rwc = rewardOverlayIpc.rewardWindowsController;
   const pwc = rewardOverlayIpc.plannerWindowsController;
   const next = !!enabled;
-  const rewardExists = !!(ctx.overlayWindow && !ctx.overlayWindow.isDestroyed());
-  const plannerExists = !!(ctx.plannerOverlayWindow && !ctx.plannerOverlayWindow.isDestroyed());
+  const rewardExists = overlayWindow("reward") !== null;
+  const plannerExists = overlayWindow("planner") !== null;
   if (ctx.overlayInteractiveMode === next && (rewardExists || plannerExists)) {
     if (rewardExists) rwc.setOverlayInteractiveMode(next, { focus });
     if (plannerExists) pwc.setOverlayInteractiveMode(next, { focus });
@@ -131,9 +144,7 @@ function toggleOverlayInteractionMode(source = "unknown"): boolean | null {
   rivenOverlayIpc.restoreRivenAfterUnfocus();
   const plannerVisible = rewardOverlayIpc.plannerWindowsController.isOverlayWindowVisible();
   const rewardVisible = rewardOverlayIpc.rewardWindowsController.isOverlayWindowVisible();
-  const rivenLeftExists = !!(
-    ctx.rivenOverlayLeftWindow && !ctx.rivenOverlayLeftWindow.isDestroyed()
-  );
+  const rivenLeftExists = overlayWindow("rivenLeft") !== null;
   const anyRivenVisible = rivenOverlayIpc.isAnyRivenWindowVisible();
 
   const anyActive = plannerVisible || rewardVisible || (anyRivenVisible && rivenLeftExists);
@@ -240,18 +251,17 @@ function sanitizeOverlayThemeVars(raw: unknown): Record<string, string> {
   return sanitized;
 }
 
-function broadcastToOpenOverlays(channel: string, payload: unknown): void {
-  rewardOverlayIpc.rewardWindowsController.sendOverlayEvent(channel, payload);
-  rewardOverlayIpc.plannerWindowsController.sendOverlayEvent(channel, payload);
-  arbiOverlayIpc.arbiSummaryWindowsController.sendOverlayEvent(channel, payload);
-  rivenOverlayIpc.forEachRivenWindow((win) => win.webContents.send(channel, payload));
-  const toast = ctx.tradeNotificationWindow;
-  if (toast && !toast.isDestroyed()) toast.webContents.send(channel, payload);
-}
+const RIVEN_KINDS = ["rivenLeft", "rivenRight"] as const satisfies readonly OverlayKind[];
+// The overlays the interaction hotkey switches between click-through and interactive.
+const INTERACTION_TOGGLE_KINDS: ReadonlySet<OverlayKind | null> = new Set<OverlayKind>([
+  "reward",
+  "planner",
+  ...RIVEN_KINDS,
+]);
 
 function pushOverlayThemeVars(): void {
   if (!ctx.overlayThemeVars || Object.keys(ctx.overlayThemeVars).length === 0) return;
-  broadcastToOpenOverlays(OVERLAY_THEME_VARS, { ...ctx.overlayThemeVars });
+  broadcastToOverlays(OVERLAY_THEME_VARS, { ...ctx.overlayThemeVars });
 }
 
 // Compared with what the windows were last sent, not with the settings before a
@@ -261,7 +271,7 @@ let sharedRivenSimilarAuctions = true;
 function shareRivenSimilarAuctions(): void {
   const shown = ctx.overlaySettings.rivenSimilarAuctionsShown !== false;
   sharedRivenSimilarAuctions = shown;
-  rivenOverlayIpc.forEachRivenWindow((win) => win.webContents.send(RIVEN_SIMILAR_AUCTIONS, shown));
+  for (const kind of RIVEN_KINDS) sendToOverlay(kind, RIVEN_SIMILAR_AUCTIONS, shown);
   broadcastToRenderers(RIVEN_SIMILAR_AUCTIONS, shown);
 }
 
@@ -290,9 +300,10 @@ const settingsController = createOverlaySettingsController({
   configureWarframeLifecycle,
 });
 
-rewardOverlayIpc.configureOverlaySettingsPersistence(settingsController.saveOverlaySettings);
-rivenOverlayIpc.configureOverlaySettingsPersistence(settingsController.saveOverlaySettings);
-arbiOverlayIpc.configureOverlaySettingsPersistence(settingsController.saveOverlaySettings);
+configureOverlayBoundsPersistence((patch) => {
+  ctx.overlaySettings = { ...ctx.overlaySettings, ...patch(ctx.overlaySettings) };
+  settingsController.saveOverlaySettings();
+});
 
 function onRelicSelectionTrigger(source: string): void {
   rewardOverlayIpc.onRelicSelectionTrigger(
@@ -333,28 +344,12 @@ function applyOverlayAvailabilitySettings(previousSettings: OverlaySettings): vo
   }
 }
 
-function isRivenOverlayWindow(win: BrowserWindow | null): boolean {
-  return !!(
-    win &&
-    ((ctx.rivenOverlayLeftWindow &&
-      !ctx.rivenOverlayLeftWindow.isDestroyed() &&
-      win.webContents.id === ctx.rivenOverlayLeftWindow.webContents.id) ||
-      (ctx.rivenOverlayRightWindow &&
-        !ctx.rivenOverlayRightWindow.isDestroyed() &&
-        win.webContents.id === ctx.rivenOverlayRightWindow.webContents.id))
-  );
-}
-
 function moveInteractiveOverlayWindow(sender: WebContents, rawDelta: unknown): void {
   const win = BrowserWindow.fromWebContents(sender);
   if (!win || win.isDestroyed()) return;
 
-  const dragBlocked = isRivenOverlayWindow(win)
-    ? !rivenOverlayIpc.isRivenInteractiveMode()
-    : arbiOverlayIpc.isArbiSummaryWindow(win)
-      ? false
-      : !ctx.overlayInteractiveMode;
-  if (dragBlocked) return;
+  const kind = overlayKindOf(win.webContents.id);
+  if (!kind || !isOverlayInteractive(kind)) return;
 
   const delta = asRecord(rawDelta) ?? {};
   const dx = Math.round(Number(delta.dx));
@@ -378,9 +373,7 @@ function register(): void {
           !ctx.overlaySettings.interactionHotkeyEnabled ||
           input.type !== "keyDown" ||
           input.isAutoRepeat ||
-          (win !== ctx.overlayWindow &&
-            win !== ctx.plannerOverlayWindow &&
-            !isRivenOverlayWindow(win))
+          !INTERACTION_TOGGLE_KINDS.has(overlayKindOf(win.webContents.id))
         )
           return;
         if (!matchesAcceleratorInput(ctx.overlaySettings.interactionHotkey, input)) return;
@@ -391,32 +384,7 @@ function register(): void {
     app.on("browser-window-created", (_event, win) => attachInteractionShortcut(win));
     BrowserWindow.getAllWindows().forEach(attachInteractionShortcut);
   }
-  const overlayEditor = registerOverlayEditor(
-    settingsController.saveOverlaySettings,
-    (kind) => {
-      if (kind === "reward")
-        rewardOverlayIpc.rewardWindowsController.positionOverlayWindow(
-          rewardOverlayIpc.rewardWindowsController.getAnchorMeta(),
-        );
-      else if (kind === "planner")
-        rewardOverlayIpc.plannerWindowsController.positionOverlayWindow(
-          rewardOverlayIpc.plannerWindowsController.getAnchorMeta(),
-        );
-      else if (kind === "arbiSummary") arbiOverlayIpc.positionArbiSummaryWindow();
-      else if (kind === "rivenLeft" || kind === "rivenRight")
-        rivenOverlayIpc.positionRivenOverlayWindows();
-    },
-    (kind) => {
-      if (kind === "reward")
-        return rewardOverlayIpc.rewardWindowsController.getOverlayBoundsForActiveDisplay();
-      if (kind === "planner")
-        return rewardOverlayIpc.plannerWindowsController.getOverlayBoundsForActiveDisplay();
-      if (kind === "arbiSummary") return arbiOverlayIpc.getArbiSummaryPlacementRect();
-      if (kind === "rivenLeft") return rivenOverlayIpc.getRivenPlacementRects().left;
-      if (kind === "rivenRight") return rivenOverlayIpc.getRivenPlacementRects().right;
-      return null;
-    },
-  );
+  const overlayEditor = registerOverlayEditor(settingsController.saveOverlaySettings);
   rivenOverlayIpc.register();
   rewardOverlayIpc.register(pushOverlayThemeVars);
   arbiOverlayIpc.register();
@@ -443,10 +411,7 @@ function register(): void {
 
   onAuthorized(OVERLAY_READY, assertOverlayRendererSender, (event) => {
     const senderId = event.sender.id;
-    const rewardReady = rewardOverlayIpc.rewardWindowsController.markRendererReady(senderId);
-    const plannerReady = rewardOverlayIpc.plannerWindowsController.markRendererReady(senderId);
-    const rivenReady = rivenOverlayIpc.markRivenRendererReady(senderId);
-    if (!rewardReady && !plannerReady && !rivenReady) {
+    if (!markOverlayReady(senderId)) {
       log.warn(`[OverlayWindow] ready signal from unknown overlay sender ${senderId}`);
     }
   });
@@ -485,13 +450,7 @@ function register(): void {
         awayWhenClosedEnabled: settings.wfmAwayWhenClosedEnabled === true,
       });
       applyMainWindowZoom();
-      rewardOverlayIpc.rewardWindowsController.positionOverlayWindow(
-        rewardOverlayIpc.rewardWindowsController.getAnchorMeta(),
-      );
-      rewardOverlayIpc.plannerWindowsController.positionOverlayWindow(
-        rewardOverlayIpc.plannerWindowsController.getAnchorMeta(),
-      );
-      rivenOverlayIpc.positionRivenOverlayWindows();
+      for (const kind of ["reward", "planner", ...RIVEN_KINDS] as const) repositionOverlay(kind);
       if ((settings.rivenSimilarAuctionsShown !== false) !== sharedRivenSimilarAuctions) {
         shareRivenSimilarAuctions();
       }
@@ -530,33 +489,24 @@ function register(): void {
       width: rect.width,
       height: rect.height,
     });
-    const riven = rivenOverlayIpc.getRivenPlacementRects();
     const userScale = (key: OverlayWindowKey) =>
-      clampNumber(
-        (ctx.overlaySettings.overlayWindowScales || {})[key] ?? ctx.overlaySettings.overlayScale,
-        0.75,
-        1.5,
-        1,
-      );
+      isScalableOverlayWindow(key)
+        ? clampNumber(
+            (ctx.overlaySettings.overlayWindowScales || {})[key] ??
+              ctx.overlaySettings.overlayScale,
+            0.75,
+            1.5,
+            1,
+          )
+        : 1;
+    const placement = (kind: OverlayKind) => {
+      const rect = overlayPlacementRect(kind);
+      if (!rect) throw new Error(`No placement for overlay ${kind}`);
+      return { ...rel(rect), scale: userScale(kind) };
+    };
     return {
       area: { width: area.width, height: area.height },
-      overlays: {
-        reward: {
-          ...rel(rewardOverlayIpc.rewardWindowsController.getOverlayBoundsForActiveDisplay()),
-          scale: userScale("reward"),
-        },
-        planner: {
-          ...rel(rewardOverlayIpc.plannerWindowsController.getOverlayBoundsForActiveDisplay()),
-          scale: userScale("planner"),
-        },
-        rivenLeft: { ...rel(riven.left), scale: userScale("rivenLeft") },
-        rivenRight: { ...rel(riven.right), scale: userScale("rivenRight") },
-        arbiSummary: {
-          ...rel(arbiOverlayIpc.getArbiSummaryPlacementRect()),
-          scale: userScale("arbiSummary"),
-        },
-        tradeNotification: { ...rel(getTradeNotificationPlacementRect()), scale: 1 },
-      },
+      overlays: Object.fromEntries(OVERLAY_KINDS.map((kind) => [kind, placement(kind)])),
     };
   });
 
@@ -614,19 +564,7 @@ function register(): void {
       };
       settingsController.saveOverlaySettings();
 
-      if (key === "reward") {
-        rewardOverlayIpc.rewardWindowsController.positionOverlayWindow(
-          rewardOverlayIpc.rewardWindowsController.getAnchorMeta(),
-        );
-      } else if (key === "planner") {
-        rewardOverlayIpc.plannerWindowsController.positionOverlayWindow(
-          rewardOverlayIpc.plannerWindowsController.getAnchorMeta(),
-        );
-      } else if (key === "rivenLeft" || key === "rivenRight") {
-        rivenOverlayIpc.positionRivenOverlayWindows();
-      } else {
-        arbiOverlayIpc.positionArbiSummaryWindow();
-      }
+      repositionOverlay(key);
       log.info(`[OverlayPlacement] scale ${key} -> ${scale.toFixed(2)}`);
       return { ok: true };
     },

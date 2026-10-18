@@ -98,6 +98,7 @@ import ctx from "./ipc/context";
 import * as inventoryIpc from "./ipc/inventoryIpc";
 import * as wfmIpc from "./ipc/wfmIpc";
 import * as overlayIpc from "./ipc/overlayIpc";
+import { destroyOverlayWindows } from "./ipc/overlay/registry";
 import * as rewardOverlayIpc from "./ipc/rewardOverlayIpc";
 import * as rivenOverlayIpc from "./ipc/rivenOverlayIpc";
 import * as arbiOverlayIpc from "./ipc/arbiOverlayIpc";
@@ -413,11 +414,7 @@ function createWindow(): void {
     if (mainWindowShowTimer) clearTimeout(mainWindowShowTimer);
     mainWindowShowTimer = null;
     ctx.mainWindow = null;
-    if (ctx.overlayWindow && !ctx.overlayWindow.isDestroyed()) ctx.overlayWindow.destroy();
-    if (ctx.rivenOverlayLeftWindow && !ctx.rivenOverlayLeftWindow.isDestroyed())
-      ctx.rivenOverlayLeftWindow.destroy();
-    if (ctx.rivenOverlayRightWindow && !ctx.rivenOverlayRightWindow.isDestroyed())
-      ctx.rivenOverlayRightWindow.destroy();
+    destroyOverlayWindows();
     disposeLinuxStreamCapture();
     app.quit();
   });
