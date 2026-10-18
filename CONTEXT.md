@@ -33,3 +33,10 @@ Domain terms for this repository. A glossary only: no implementation detail.
   than the gear itself. Never masterable on its own.
 - **Modular part**: a piece of a modular build (kitgun, zaw, amp, K-Drive, Moa)
   or a part of one. Has no weapon slot of its own.
+
+## Overlays
+
+- **Overlay**: a window WFHelper draws over the running game.
+- **Overlay kind**: one of the overlays the game screen can show: relic rewards,
+  relic planner, left and right riven panels, Arbitration summary and trade
+  toast. Each kind has its own window, saved position and saved layout.

@@ -18,10 +18,15 @@ import {
   syncUnfocusHide,
   syncOverlayWindowZOrder,
 } from "./overlay/zOrder";
+import { createOverlayWindowsController } from "./overlay/windows";
 import {
-  createOverlayWindowBoundsChangeHandler,
-  createOverlayWindowsController,
-} from "./overlay/windows";
+  controllerAdapter,
+  overlayKindOf,
+  overlayWindow,
+  overlayWindowSlot,
+  registerOverlay,
+  rememberOverlayWindowBounds,
+} from "./overlay/registry";
 import { isRivenInteractiveMode } from "./rivenOverlayIpc";
 import { withScope } from "../services/logger";
 import { hardenBrowserWindowNavigation } from "../services/windowSecurity";
@@ -55,14 +60,6 @@ import { REWARD_OVERLAY_CANVAS } from "../config/shared/rewardOverlayLayout";
 
 const log = withScope("rewardOverlayIpc");
 
-let persistOverlaySettings: (() => boolean) | null = null;
-const rememberOverlayWindowBounds = createOverlayWindowBoundsChangeHandler({
-  ctx,
-  save: () => {
-    persistOverlaySettings?.();
-  },
-});
-
 const rewardScanner = {
   captureSourceMeta,
   detectRelicSelectionEra,
@@ -83,6 +80,7 @@ export const rewardWindowsController = createOverlayWindowsController({
   BrowserWindow,
   screen,
   ctx,
+  ...overlayWindowSlot("reward"),
   log,
   hardenBrowserWindowNavigation,
   overlayWindowFile: OVERLAY_WINDOW_FILE,
@@ -100,10 +98,7 @@ export const plannerWindowsController = createOverlayWindowsController({
   BrowserWindow,
   screen,
   ctx,
-  getOverlayWindow: () => ctx.plannerOverlayWindow,
-  setOverlayWindow: (window) => {
-    ctx.plannerOverlayWindow = window;
-  },
+  ...overlayWindowSlot("planner"),
   getOverlayInteractiveMode: () => ctx.overlayInteractiveMode,
   setOverlayInteractiveModeState: (enabled) => {
     ctx.overlayInteractiveMode = !!enabled;
@@ -122,6 +117,10 @@ export const plannerWindowsController = createOverlayWindowsController({
   onPresentationEnd: () => endOverlayInteractionWhenIdle(),
   canRaise: canRaiseOverlayWindows,
 });
+
+const isPairInteractive = () => ctx.overlayInteractiveMode;
+registerOverlay("reward", controllerAdapter(rewardWindowsController, isPairInteractive));
+registerOverlay("planner", controllerAdapter(plannerWindowsController, isPairInteractive));
 
 const unfocusHideControllers = [rewardWindowsController, plannerWindowsController];
 
@@ -173,8 +172,8 @@ registerZOrderSubscriber({
       process.platform === "win32"
         ? canRaiseOverlayWindows()
         : warframeFocused || ctx.overlayInteractiveMode;
-    syncOverlayWindowZOrder(rewardWindowsController, ctx.overlayWindow, keepRaised);
-    syncOverlayWindowZOrder(plannerWindowsController, ctx.plannerOverlayWindow, keepRaised);
+    syncOverlayWindowZOrder(rewardWindowsController, overlayWindow("reward"), keepRaised);
+    syncOverlayWindowZOrder(plannerWindowsController, overlayWindow("planner"), keepRaised);
   },
 });
 
@@ -198,13 +197,9 @@ const relicSelectionController = createRelicSelectionController({
   cacheFilePath: PRICE_CACHE_FILE,
 });
 
-export function configureOverlaySettingsPersistence(persist: () => boolean): void {
-  persistOverlaySettings = persist;
-}
-
 export function warmPlannerOverlayWindow(): void {
   if (!isRelicRecommendationOverlayEnabled(ctx.overlaySettings)) return;
-  if (ctx.plannerOverlayWindow && !ctx.plannerOverlayWindow.isDestroyed()) return;
+  if (overlayWindow("planner")) return;
   plannerWindowsController.createOverlayWindow({ show: false });
 }
 
@@ -276,8 +271,7 @@ export function register(pushOverlayThemeVars: () => void): void {
     RELIC_REWARD_CONTENT_HEIGHT,
     assertOverlayRendererSender,
     (event, height: unknown) => {
-      const reward = ctx.overlayWindow;
-      if (!reward || reward.isDestroyed() || event.sender.id !== reward.webContents.id) return;
+      if (overlayKindOf(event.sender.id) !== "reward") return;
       if (typeof height !== "number" || !Number.isFinite(height) || height <= 0 || height > 10_000)
         return;
       rewardWindowsController.fitOverlayContentHeight(height);
@@ -289,12 +283,7 @@ export function register(pushOverlayThemeVars: () => void): void {
     plannerWindowsController.clearOverlayAutoHideTimer();
     relicSelectionController.suppressReopenForClose?.();
 
-    const senderId = Number(event?.sender?.id || 0);
-    if (
-      ctx.plannerOverlayWindow &&
-      !ctx.plannerOverlayWindow.isDestroyed() &&
-      senderId === ctx.plannerOverlayWindow.webContents.id
-    ) {
+    if (overlayKindOf(Number(event?.sender?.id || 0)) === "planner") {
       plannerWindowsController.hideOverlayWindow();
     } else {
       rewardWindowsController.hideOverlayWindow();
@@ -332,7 +321,7 @@ export function register(pushOverlayThemeVars: () => void): void {
   onAuthorized(TOGGLE_OVERLAY, assertMainRendererSender, () => {
     if (!isRelicRewardsOverlayEnabled(ctx.overlaySettings)) return;
     rewardWindowsController.clearOverlayAutoHideTimer();
-    if (!ctx.overlayWindow || ctx.overlayWindow.isDestroyed()) {
+    if (!overlayWindow("reward")) {
       presentPairOverlay(rewardWindowsController, pushOverlayThemeVars);
     } else if (rewardWindowsController.isOverlayWindowVisible()) {
       rewardWindowsController.hideOverlayWindow();

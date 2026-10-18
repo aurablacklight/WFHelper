@@ -18,6 +18,7 @@ import { createKeepMappedMode } from "./overlay/keepMapped";
 import { createLayerPresentation } from "./overlay/layerPresentation";
 import { clampIntoArea, findDisplayById } from "./overlay/windows";
 import { registerZOrderSubscriber, syncUnfocusHide } from "./overlay/zOrder";
+import { overlayWindow, registerOverlay } from "./overlay/registry";
 import { isNativeWayland } from "../services/linuxDisplayBackend";
 import { probeLayerShell } from "../services/layerShell";
 import { tradeNotificationBody, tradeNotificationTitle } from "../config/shared/notifications";
@@ -184,6 +185,15 @@ const _unfocusHide = {
     return true;
   },
 };
+
+// Placed again on every show and never clickable; its renderer reports nothing.
+registerOverlay("tradeNotification", {
+  reposition: () => {},
+  placementRect: getTradeNotificationPlacementRect,
+  send: (channel, payload) =>
+    overlayWindow("tradeNotification")?.webContents.send(channel, payload),
+  isInteractive: () => false,
+});
 
 registerZOrderSubscriber({
   isActive: () => _visible || _hiddenByUnfocus,
