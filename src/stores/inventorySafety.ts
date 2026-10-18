@@ -12,6 +12,7 @@ import {
   DEFAULT_SAFETY_SETTINGS,
   normalizeSafetySettings,
 } from "../lib/inventory/safetyRules.js";
+import type { Translator } from "../lib/i18n.js";
 import { readStoredJson, writeStorage } from "../lib/persistence.js";
 import { buildSelectionSafetyContext, selectionKeyFor } from "../lib/tradeWorkbench/queueModel.js";
 import { foundryData, inventoryData, itemDb, parsedItems } from "./data.js";
@@ -179,4 +180,18 @@ export function showsSafetyBadge(
   if (item.inventoryGroup !== "equipment") return true;
   const rules = verdict.reservations.map((entry) => entry.rule);
   return !(rules.includes("built") && rules.every((rule) => ENGINE_ONLY_RULES.has(rule)));
+}
+
+/** The "(n)" safe-to-sell badge a card and a list row both show, with its tooltip. */
+export function safetyBadgeFor(
+  item: { tradable?: boolean; inventoryGroup?: InventoryGroup },
+  verdict: SafetyVerdict | null | undefined,
+  t: Translator,
+): { safe: number; title: string } | null {
+  if (!verdict || !showsSafetyBadge(item, verdict)) return null;
+  const lines = [
+    t("inventory.safety.safeCount", { count: verdict.safe }),
+    ...verdict.reservations.map((entry) => t(entry.reasonKey, entry.params)),
+  ];
+  return { safe: verdict.safe, title: lines.join("\n") };
 }

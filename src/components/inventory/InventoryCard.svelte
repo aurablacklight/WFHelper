@@ -15,7 +15,7 @@
   import { archonShardsBySuit } from "../../stores/archonShards.js";
   import {
     inventorySafetyVerdicts,
-    showsSafetyBadge,
+    safetyBadgeFor,
     verdictFor,
   } from "../../stores/inventorySafety.js";
   import { itemMarksFor } from "../../lib/parentMastery.js";
@@ -42,14 +42,7 @@
 
   $: shardCopies = $archonShardsBySuit.get(item.uniqueName || item.internalName || "") ?? [];
 
-  $: verdict = verdictFor(item, $inventorySafetyVerdicts);
-  $: reservedVerdict = showsSafetyBadge(item, verdict) ? verdict : null;
-  $: safeToSellTitle = reservedVerdict
-    ? [
-        $tr("inventory.safety.safeCount", { count: reservedVerdict.safe }),
-        ...reservedVerdict.reservations.map((entry) => $tr(entry.reasonKey, entry.params)),
-      ].join("\n")
-    : "";
+  $: safetyBadge = safetyBadgeFor(item, verdictFor(item, $inventorySafetyVerdicts), $tr);
 
   $: marks = itemMarksFor(item);
 
@@ -209,10 +202,10 @@
     {:else}
       <span
         class="absolute right-2 bottom-1.5 font-display text-base font-bold text-success drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
-        >x{item.amount}{#if reservedVerdict}<span
+        >x{item.amount}{#if safetyBadge}<span
             class="ml-1 text-sm text-warning"
-            data-safe-to-sell={reservedVerdict.safe}
-            title={safeToSellTitle}>({reservedVerdict.safe})</span
+            data-safe-to-sell={safetyBadge.safe}
+            title={safetyBadge.title}>({safetyBadge.safe})</span
           >{/if}</span
       >
     {/if}

@@ -21,7 +21,7 @@
   import { wfmItems } from "../../stores/data.js";
   import {
     inventorySafetyVerdicts,
-    showsSafetyBadge,
+    safetyBadgeFor,
     verdictFor,
   } from "../../stores/inventorySafety.js";
   import type { InventoryViewItem } from "../../lib/inventoryMarket.js";
@@ -236,14 +236,11 @@
             $archonShardsBySuit.get(item.uniqueName || item.internalName || "") ?? []}
           {@const selected = selectedKeys?.has(item.internalName) ?? false}
           {@const marks = itemMarksFor(item)}
-          {@const verdict = verdictFor(item, $inventorySafetyVerdicts)}
-          {@const reserved = showsSafetyBadge(item, verdict) ? verdict : null}
-          {@const safeTitle = reserved
-            ? [
-                $t("inventory.safety.safeCount", { count: reserved.safe }),
-                ...reserved.reservations.map((entry) => $t(entry.reasonKey, entry.params)),
-              ].join("\n")
-            : ""}
+          {@const safetyBadge = safetyBadgeFor(
+            item,
+            verdictFor(item, $inventorySafetyVerdicts),
+            $t,
+          )}
           <tr
             class="cursor-pointer transition-colors duration-100 hover:bg-bg-raised {selected
               ? 'bg-accent/15'
@@ -329,10 +326,10 @@
             <td
               class="border-b border-border/50 px-2 py-1 text-right font-semibold text-success tabular-nums"
             >
-              {ownedLabel(item, $locale)}{#if reserved}<span
+              {ownedLabel(item, $locale)}{#if safetyBadge}<span
                   class="ml-1 text-xs text-warning"
-                  data-safe-to-sell={reserved.safe}
-                  title={safeTitle}>({reserved.safe})</span
+                  data-safe-to-sell={safetyBadge.safe}
+                  title={safetyBadge.title}>({safetyBadge.safe})</span
                 >{/if}
             </td>
             <td class="border-b border-border/50 px-2 py-1 text-xs whitespace-nowrap">
