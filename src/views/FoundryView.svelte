@@ -254,7 +254,7 @@
       foundryState: FOUNDRY_STATE_BY_STATUS[row.status],
       looseComponent: Boolean(db?.componentOf),
       subsumed:
-        row.e.category === "Warframe" && isSubsumableFrame(row.e.name)
+        db?.kind === "warframe" && isSubsumableFrame(row.e.name)
           ? isFrameSubsumed(row.e.name, subsumedFamilies)
           : undefined,
     };

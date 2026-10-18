@@ -29,7 +29,7 @@ export interface ItemKindFields {
 }
 
 /** The raw facts an entry's kind is settled from. */
-export interface ItemKindSource {
+interface ItemKindSource {
   category?: string | null;
   productCategory?: string | null;
   type?: string | null;

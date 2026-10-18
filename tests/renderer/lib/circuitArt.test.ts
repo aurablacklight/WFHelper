@@ -8,6 +8,7 @@ import {
   resolveVendorItems,
 } from "../../../src/lib/world.js";
 import type { ItemDbEntry } from "../../../src/types/inventory.js";
+import { withSettledKinds } from "../../fixtures/itemKind.js";
 
 const TORID = "/Lotus/Weapons/Tenno/LongGuns/Torid";
 const ADAPTER = "/Lotus/Types/Items/MiscItems/IncarnonAdapters/Primary/ToridIncarnonUnlocker";
@@ -15,7 +16,7 @@ const EXCALIBUR = "/Lotus/Powersuits/Excalibur/Excalibur";
 const ASH = "/Lotus/Powersuits/Ninja/Ninja";
 const ASH_PRIME = "/Lotus/Powersuits/Ninja/NinjaPrime";
 
-const DB: Record<string, ItemDbEntry> = {
+const DB: Record<string, ItemDbEntry> = withSettledKinds({
   [TORID]: { name: "Torid", imageUrl: "torid-base.png", category: "Primary" },
   [ADAPTER]: {
     name: "Torid Incarnon Genesis",
@@ -29,7 +30,7 @@ const DB: Record<string, ItemDbEntry> = {
   [EXCALIBUR]: { name: "Excalibur", imageUrl: "excalibur.png", category: "Warframe" },
   [ASH]: { name: "Ash", imageUrl: "ash.png", category: "Warframe" },
   [ASH_PRIME]: { name: "Ash Prime", imageUrl: "ash-prime.png", category: "Warframe" },
-};
+});
 
 describe("circuit choice art", () => {
   it("shows the Incarnon Genesis art for a Steel Path weapon", () => {
