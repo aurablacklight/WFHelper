@@ -1,5 +1,6 @@
 import { toMarketSlug } from "../../../lib/marketNaming.js";
 import { titleFromSlug } from "../../../../config/shared/wfm.js";
+import { isRivenWeaponKind } from "../../../../config/shared/itemKind.js";
 import type {
   MarketAlertRule,
   MarketAlertSellerStatus,
@@ -13,16 +14,11 @@ interface ThumbEntry {
   name: string | null;
 }
 
-/** Product categories a riven can roll for. A mod or blueprint sharing the
- *  weapon's name must not win the thumbnail. */
-const RIVEN_WEAPON_CATEGORIES = new Set([
-  "LongGuns",
-  "Pistols",
-  "Melee",
-  "SpaceGuns",
-  "SpaceMelee",
-  "SentinelWeapons",
-]);
+/** A weapon a riven can roll for. A mod or blueprint sharing the weapon's name
+ *  must not win the thumbnail. */
+function isRivenWeapon(entry: ItemDbEntry): boolean {
+  return isRivenWeaponKind(entry.kind) && !entry.kindPart;
+}
 
 // "Ack & Brunt" folds to ack_brunt here while warframe.market slugs it
 // ack_and_brunt, so both spellings go into the index.
@@ -49,7 +45,7 @@ function itemDbIndex(itemDb: Record<string, ItemDbEntry>): Map<string, ThumbEntr
       thumb: typeof entry.imageUrl === "string" && entry.imageUrl ? entry.imageUrl : null,
       name: entry.displayName || entry.name,
     };
-    const target = RIVEN_WEAPON_CATEGORIES.has(entry.productCategory ?? "") ? weapons : others;
+    const target = isRivenWeapon(entry) ? weapons : others;
     for (const key of slugKeys(entry.name)) {
       const existing = target.get(key);
       if (!existing) target.set(key, value);

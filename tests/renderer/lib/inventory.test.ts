@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { withSettledKinds } from "../../fixtures/itemKind.js";
+
 import { aggregateComponentOwnership } from "../../../config/shared/componentOwnership.js";
 import { withoutFoundryPending } from "../../../config/shared/foundryPending.js";
 import { parseFoundry, parseInventory, parseResources } from "../../../src/lib/inventory.js";
@@ -1347,7 +1349,7 @@ const VULPAPHYLA_MUTAGEN =
   "/Lotus/Types/Friendly/Pets/CreaturePets/CreaturePetParts/Deimos/InfestedCritterMutagenA";
 const PLAIN_KUBROW = "/Lotus/Types/Friendly/Pets/KubrowPets/SunikaKubrowPetPowerSuit";
 
-const MODULAR_DB: Record<string, ItemDbEntry> = {
+const MODULAR_DB: Record<string, ItemDbEntry> = withSettledKinds({
   [KDRIVE_DECK]: { name: "Ventkid Deck", productCategory: "Pistols" },
   [KDRIVE_JET]: { name: "Ventkid Jet", productCategory: "Pistols" },
   [MOA_HEAD]: { name: "Lambeo Moa", productCategory: "Pistols" },
@@ -1362,7 +1364,7 @@ const MODULAR_DB: Record<string, ItemDbEntry> = {
   [AMP_PRISM]: { name: "Raplak Prism", productCategory: "Pistols" },
   [VULPAPHYLA_BASE]: { name: "Panzer Vulpaphyla", productCategory: "KubrowPets" },
   [PLAIN_KUBROW]: { name: "Sunika Kubrow", productCategory: "KubrowPets" },
-};
+});
 
 describe("modular part classification", () => {
   it("keeps K-Drive and pet parts in their source bucket despite the Pistols export", () => {
@@ -1388,7 +1390,7 @@ describe("modular part classification", () => {
     const lex = "/Lotus/Weapons/Tenno/Pistols/Lex";
     const items = parseInventory(
       { MiscItems: [{ ItemType: lex, ItemCount: 1 }] },
-      { [lex]: { name: "Lex", productCategory: "Pistols" } },
+      withSettledKinds({ [lex]: { name: "Lex", category: "Weapon", productCategory: "Pistols" } }),
     );
 
     expect(items[0]?.category).toBe("secondary");

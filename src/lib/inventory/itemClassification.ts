@@ -9,6 +9,7 @@ import {
   MODULAR_COLLECTIONS,
 } from "../../../config/shared/gearCollections.js";
 import type { EquipmentCollection } from "../../../config/shared/gearCollections.js";
+import type { ItemKind } from "../../../config/shared/itemKind.js";
 import type { InventoryGroup, ItemDbEntry, RawInventoryEntry } from "../../types/inventory.js";
 
 export interface ResolvedItem extends ItemDbEntry {
@@ -41,10 +42,7 @@ export const CATEGORIES: CategoryDef[] = EQUIPMENT_COLLECTIONS.map((key) => ({
   ...CATEGORY_BY_COLLECTION[key],
 }));
 
-// DE names the collection and the productCategory alike, so one row serves both.
-const FILTER_BY_PRODUCT = new Map<string, string>(
-  CATEGORIES.map((entry) => [entry.key, entry.cat]),
-);
+const AMP_PATH = /\/OperatorAmplifiers?\//i;
 
 const EQUIPMENT_COLLECTION_KEYS = new Set<string>(EQUIPMENT_COLLECTIONS);
 
@@ -373,37 +371,30 @@ export function shouldHide(
   return false;
 }
 
-const WEAPON_SLOT_FILTERS = new Set(["primary", "secondary", "melee"]);
+const INVENTORY_CATEGORY_BY_KIND: Partial<Record<ItemKind, string>> = {
+  warframe: "warframes",
+  primary: "primary",
+  secondary: "secondary",
+  melee: "melee",
+  companion: "companions",
+  "companion-weapon": "companions",
+  archwing: "archwing",
+  "arch-gun": "archwing",
+  "arch-melee": "archwing",
+  amp: "amps",
+  necramech: "necramech",
+};
 
-// DE exports every modular part with productCategory "Pistols" (amp prisms,
-// kitgun chambers, zaw strikes, K-Drive decks, Moa heads), so any bucket that
-// trusts productCategory files them under Secondary. Kitgun and zaw paths carry
-// no "kitguns"/"zaws" segment, only the SUModular/InfKitGun/ModularMelee ones.
-export const MODULAR_PART_PATH =
-  /\/(?:kdrives|zaws|kitguns|hoverboard|moapets|operatoramplifiers?)\/|\/(?:infkitgun|modularmelee|sumodular)[a-z0-9]*\//i;
-
-// Pet and sentinel parts hit the same "Pistols" export trap.
-export const PET_PART_PATH =
-  /\/(?:pets|zanukapets|creaturepets|catbrowpets|kubrowpets|sentinels)\//i;
-
+/** Gear and its parts file under their kind; modular pieces keep their collection's. */
 export function inferCategory(
   internalName: string,
   defaultCat: string,
   dbEntry: ItemDbEntry = {},
 ): string {
-  if (/\/OperatorAmplifiers?\//i.test(internalName)) return "amps";
-  const mapped =
-    typeof dbEntry.productCategory === "string"
-      ? FILTER_BY_PRODUCT.get(dbEntry.productCategory)
-      : undefined;
-  if (!mapped) return defaultCat;
-  if (
-    WEAPON_SLOT_FILTERS.has(mapped) &&
-    (MODULAR_PART_PATH.test(internalName) || PET_PART_PATH.test(internalName))
-  ) {
-    return defaultCat;
-  }
-  return mapped;
+  // Amp parts and their blueprints all live under the amp path.
+  if (AMP_PATH.test(internalName)) return "amps";
+  if (!dbEntry.kind || dbEntry.modularPart) return defaultCat;
+  return INVENTORY_CATEGORY_BY_KIND[dbEntry.kind] ?? defaultCat;
 }
 
 interface ModularBuild {
