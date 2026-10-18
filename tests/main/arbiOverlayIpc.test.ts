@@ -41,7 +41,6 @@ vi.mock("../../ipc/overlay/zOrder", () => ({
   syncUnfocusHide: vi.fn(),
 }));
 vi.mock("../../ipc/overlay/windows", () => ({
-  createOverlayWindowBoundsChangeHandler: () => vi.fn(),
   createOverlayWindowsController: () => ({
     isOverlayWindowVisible: () => state.visible,
     clearOverlayAutoHideTimer: state.clearAutoHide,

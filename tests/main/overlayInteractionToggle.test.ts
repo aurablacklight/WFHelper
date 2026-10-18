@@ -94,10 +94,7 @@ vi.mock("../../ipc/overlay/settings", () => ({
 vi.mock("../../ipc/overlay/windows", () => ({ moveOverlayWindowBy: vi.fn() }));
 vi.mock("../../ipc/popoutIpc", () => ({ broadcastToRenderers: state.broadcast }));
 vi.mock("../../ipc/overlay/zOrder", () => ({ returnFocusToWarframe: state.returnFocus }));
-vi.mock("../../ipc/tradeNotificationIpc", () => ({
-  getTradeNotificationPlacementRect: vi.fn(),
-  hideTradeNotification: vi.fn(),
-}));
+vi.mock("../../ipc/tradeNotificationIpc", () => ({ hideTradeNotification: vi.fn() }));
 vi.mock("../../services/atomicFile", () => ({ writeFileAtomicSync: vi.fn() }));
 vi.mock("../../services/userDataPath", () => ({ userDataPath: () => "D:/fixture/overlay.json" }));
 vi.mock("../../services/acceleratorVk", () => ({ matchesAcceleratorInput: vi.fn() }));
@@ -114,23 +111,15 @@ vi.mock("../../ipc/rivenOverlayIpc", () => ({
   isRivenInteractiveMode: () => state.rivenInteractive,
   setRivenInteractiveMode: state.setRivenInteractiveMode,
   onRivenManualRescan: vi.fn(),
-  configureOverlaySettingsPersistence: vi.fn(),
-  positionRivenOverlayWindows: vi.fn(),
-  forEachRivenWindow: (fn: (win: { webContents: { send: unknown } }) => void) =>
-    fn({ webContents: { send: state.rivenPanelSend } }),
   register: vi.fn(),
 }));
 vi.mock("../../ipc/rewardOverlayIpc", () => ({
   rewardWindowsController: state.reward,
   plannerWindowsController: state.planner,
   pushOverlayInteractionMode: state.push,
-  configureOverlaySettingsPersistence: vi.fn(),
   register: vi.fn(),
 }));
-vi.mock("../../ipc/arbiOverlayIpc", () => ({
-  configureOverlaySettingsPersistence: vi.fn(),
-  register: vi.fn(),
-}));
+vi.mock("../../ipc/arbiOverlayIpc", () => ({ register: vi.fn() }));
 vi.mock("../../services/arbiRunTracker", () => ({ setArbiTrackingEnabled: vi.fn() }));
 vi.mock("../../services/profitTakerTracker", () => ({ setPtTrackingEnabled: vi.fn() }));
 vi.mock("../../services/missionRewards", () => ({ setTrackingEnabled: vi.fn() }));
@@ -150,7 +139,16 @@ vi.mock("../../ipc/context", () => ({
 }));
 
 import ctx from "../../ipc/context";
+import { registerOverlay } from "../../ipc/overlay/registry";
 import { loadOverlaySettings, register, toggleOverlayInteractionMode } from "../../ipc/overlayIpc";
+
+// One riven panel open: the registry hands it the setting overlayIpc shares.
+registerOverlay("rivenLeft", {
+  reposition: vi.fn(),
+  placementRect: vi.fn(() => ({ x: 0, y: 0, width: 1, height: 1 })),
+  send: state.rivenPanelSend,
+  isInteractive: () => state.rivenInteractive,
+});
 
 const pair = [state.reward, state.planner] as FakePair[];
 

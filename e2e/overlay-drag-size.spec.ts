@@ -222,10 +222,12 @@ test("Windows edge resizing changes only the dragged dimension and preserves tex
         candidate.webContents.getURL().includes("side=left"),
       )!;
       const riven = main.require(`${app.getAppPath()}/.electron-build/ipc/rivenOverlayIpc`) as {
-        positionRivenOverlayWindows: () => void;
         onRivenSessionClose: () => void;
         onRivenSessionOpen: () => void;
       };
+      const registry = main.require(
+        `${app.getAppPath()}/.electron-build/ipc/overlay/registry`,
+      ) as typeof import("../ipc/overlay/registry");
       const ctx = main.require(`${app.getAppPath()}/.electron-build/ipc/context`) as {
         default: {
           overlaySettings: {
@@ -319,7 +321,7 @@ test("Windows edge resizing changes only the dragged dimension and preserves tex
             assertRect(applied);
           }
           const held = await settledBounds();
-          riven.positionRivenOverlayWindows();
+          registry.repositionOverlay("rivenLeft");
           snapshots.push({
             edge,
             before: start,

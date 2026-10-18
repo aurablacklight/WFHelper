@@ -43,7 +43,6 @@ vi.mock("../../ipc/ipcSecurity", () => ({
   onAuthorized: vi.fn(),
 }));
 vi.mock("../../ipc/overlay/windows", () => ({
-  createOverlayWindowBoundsChangeHandler: () => vi.fn(),
   createOverlayWindowsController: (options: { onPresentationEnd?: () => void }) => {
     const label = state.controllers.length === 0 ? "left" : "right";
     const controller: FakeController = {

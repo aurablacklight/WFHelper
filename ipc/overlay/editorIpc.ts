@@ -11,6 +11,7 @@ import {
 } from "../ipcSecurity";
 import { overlayMessages } from "../overlayI18n";
 import { createOverlayEditor } from "./rewardEditor";
+import { overlayKindOf, overlayPlacementRect, overlayWindow, repositionOverlay } from "./registry";
 import {
   DEFAULT_OVERLAY_FIELD_STYLE,
   OVERLAY_LAYOUT_KINDS,
@@ -33,41 +34,16 @@ import {
   type RewardPresentation,
 } from "../../config/shared/rewardPresentation";
 
-function liveWindow(kind: OverlayLayoutKind) {
-  switch (kind) {
-    case "reward":
-      return ctx.overlayWindow;
-    case "planner":
-      return ctx.plannerOverlayWindow;
-    case "rivenLeft":
-      return ctx.rivenOverlayLeftWindow;
-    case "rivenRight":
-      return ctx.rivenOverlayRightWindow;
-    case "arbiSummary":
-      return ctx.arbiSummaryWindow;
-    case "tradeNotification":
-      return ctx.tradeNotificationWindow;
-  }
-}
-
-export function registerOverlayEditor(
-  persist: () => boolean,
-  reposition: (kind: OverlayLayoutKind) => void,
-  resolveBounds?: (
-    kind: OverlayLayoutKind,
-  ) => { width: number; height: number; zoomFactor: number } | null,
-) {
+export function registerOverlayEditor(persist: () => boolean) {
   let lastReward: RewardPresentation | null = null;
   onAuthorized(RELIC_REWARD_PRESENTATION, assertOverlayRendererSender, (event, raw: unknown) => {
-    const reward = ctx.overlayWindow;
-    if (!reward || reward.isDestroyed() || event.sender.id !== reward.webContents.id) return;
+    if (overlayKindOf(event.sender.id) !== "reward") return;
     const presentation = normalizeRewardPresentation(raw);
     if (presentation) lastReward = presentation;
   });
   function applySaved(state: OverlayEditState): void {
-    const win = liveWindow(state.kind);
-    if (win && !win.isDestroyed()) win.webContents.send(OVERLAY_EDIT_STATE, state);
-    reposition(state.kind);
+    overlayWindow(state.kind)?.webContents.send(OVERLAY_EDIT_STATE, state);
+    repositionOverlay(state.kind);
   }
   const editor = createOverlayEditor({
     ctx,
@@ -86,10 +62,10 @@ export function registerOverlayEditor(
     const kind = kindFrom(raw);
     const descriptor = getOverlayDescriptor(kind);
     const reward = kind === "reward" ? editor.previewReward() : null;
-    const win = liveWindow(kind);
     // The toast has a fixed CSS zoom that its editor deliberately removes.
-    const native = kind !== "tradeNotification" && win && !win.isDestroyed() ? win : null;
-    const resolved = resolveBounds?.(kind);
+    const fixedZoom = kind === "tradeNotification";
+    const native = fixedZoom ? null : overlayWindow(kind);
+    const resolved = fixedZoom ? null : overlayPlacementRect(kind);
     const size = native?.getSize();
     const zoomFactor = native?.webContents.getZoomFactor() ?? resolved?.zoomFactor ?? 1;
     const canvas = {
@@ -130,10 +106,9 @@ export function registerOverlayEditor(
     (event, token: unknown, save: unknown) => editor.end(token, save, event.sender),
   );
   handleAuthorized(OVERLAY_LAYOUT_GET, assertLocalizedOverlaySender, (event) => {
-    for (const kind of OVERLAY_LAYOUT_KINDS) {
-      if (liveWindow(kind)?.webContents.id === event.sender.id) return editor.savedState(kind);
-    }
-    throw new Error("Unknown overlay sender");
+    const kind = overlayKindOf(event.sender.id);
+    if (!kind) throw new Error("Unknown overlay sender");
+    return editor.savedState(kind);
   });
   return {
     assertIdle() {

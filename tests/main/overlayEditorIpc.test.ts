@@ -23,6 +23,11 @@ import {
 } from "../../config/shared/overlayLayout";
 import ctx from "../../ipc/context";
 import { registerOverlayEditor } from "../../ipc/overlay/editorIpc";
+import {
+  registerOverlay,
+  type OverlayKind,
+  type OverlayPlacementRect,
+} from "../../ipc/overlay/registry";
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>>(),
@@ -73,7 +78,20 @@ function invoke(channel: string, event: IpcMainInvokeEvent, ...args: unknown[]):
   return handler(event, ...args);
 }
 
+const reposition = vi.fn<(kind: OverlayKind) => void>();
+const placement = vi.fn<(kind: OverlayKind) => OverlayPlacementRect>();
+
 beforeEach(() => {
+  reposition.mockReset();
+  placement.mockReset();
+  for (const kind of OVERLAY_LAYOUT_KINDS) {
+    registerOverlay(kind, {
+      reposition: () => reposition(kind),
+      placementRect: () => placement(kind),
+      send: vi.fn(),
+      isInteractive: () => false,
+    });
+  }
   mocks.handlers.clear();
   mocks.events.clear();
   ctx.mainWindow = null;
@@ -104,7 +122,7 @@ describe("overlay editor IPC boundaries", () => {
     ctx.overlayWindow = reward.window;
     ctx.plannerOverlayWindow = planner.window;
     const persist = vi.fn(() => true);
-    registerOverlayEditor(persist, vi.fn());
+    registerOverlayEditor(persist);
     const report = mocks.events.get(RELIC_REWARD_PRESENTATION)!;
     const item = {
       name: "Forma Blueprint",
@@ -173,12 +191,8 @@ describe("overlay editor IPC boundaries", () => {
     ctx.overlayWindow = reward.window;
     vi.mocked(reward.window.getSize).mockReturnValue([900, 375]);
     reward.contents.getZoomFactor.mockReturnValue(1.25);
-    const bounds = vi.fn(() => ({ width: 1000, height: 500, zoomFactor: 1.25 }));
-    registerOverlayEditor(
-      vi.fn(() => true),
-      vi.fn(),
-      bounds,
-    );
+    placement.mockReturnValue({ x: 0, y: 0, width: 1000, height: 500, zoomFactor: 1.25 });
+    registerOverlayEditor(vi.fn(() => true));
     expect(await invoke(OVERLAY_EDIT_PREVIEW, main.event, "reward")).toMatchObject({
       canvas: { width: 720, height: 300 },
     });
@@ -186,7 +200,7 @@ describe("overlay editor IPC boundaries", () => {
     expect(await invoke(OVERLAY_EDIT_PREVIEW, main.event, "reward")).toMatchObject({
       canvas: { width: 800, height: 400 },
     });
-    expect(bounds).toHaveBeenCalledWith("reward");
+    expect(placement).toHaveBeenCalledWith("reward");
   });
 
   it("saves an offset dragged inside a grown window and still bounds a hostile one", async () => {
@@ -196,7 +210,7 @@ describe("overlay editor IPC boundaries", () => {
     ctx.overlayWindow = reward.window;
     vi.mocked(reward.window.getSize).mockReturnValue([980, 420]);
     const persist = vi.fn(() => true);
-    registerOverlayEditor(persist, vi.fn());
+    registerOverlayEditor(persist);
     expect(await invoke(OVERLAY_EDIT_PREVIEW, main.event, "reward")).toMatchObject({
       canvas: { width: 980, height: 420 },
       descriptor: { canvas: { width: 980, height: 236 } },
@@ -227,10 +241,7 @@ describe("overlay editor IPC boundaries", () => {
         fields: { vitusValue: { ...DEFAULT_OVERLAY_FIELD_STYLE, y: 440 } },
       },
     };
-    registerOverlayEditor(
-      vi.fn(() => true),
-      vi.fn(),
-    );
+    registerOverlayEditor(vi.fn(() => true));
     expect(
       ((await invoke(OVERLAY_LAYOUT_GET, arbi.event)) as OverlayEditState).layout.fields.vitusValue,
     ).toMatchObject({ y: 440 });
@@ -244,8 +255,7 @@ describe("overlay editor IPC boundaries", () => {
     ctx.plannerOverlayWindow = planner.window;
     ctx.overlayWindow = reward.window;
     const persist = vi.fn(() => true);
-    const reposition = vi.fn();
-    registerOverlayEditor(persist, reposition);
+    registerOverlayEditor(persist);
     const draft = (await invoke(OVERLAY_EDIT_BEGIN, main.event, "planner")) as OverlayEditState;
     await invoke(OVERLAY_EDIT_UPDATE, main.event, draft.sessionId, {
       type: "field",
@@ -273,10 +283,7 @@ describe("overlay editor IPC boundaries", () => {
   it("blocks imported layouts while a draft is active and permits them after cancel", async () => {
     const main = windowStub(1, "dist/index.html");
     ctx.mainWindow = main.window;
-    const controls = registerOverlayEditor(
-      vi.fn(() => true),
-      vi.fn(),
-    );
+    const controls = registerOverlayEditor(vi.fn(() => true));
     expect(() => controls.assertIdle()).not.toThrow();
     const draft = (await invoke(OVERLAY_EDIT_BEGIN, main.event, "planner")) as OverlayEditState;
     expect(() => controls.assertIdle()).toThrow(
@@ -296,9 +303,8 @@ describe("overlay editor IPC boundaries", () => {
     ctx.rivenOverlayRightWindow = windows[3]!.window;
     ctx.arbiSummaryWindow = windows[4]!.window;
     ctx.tradeNotificationWindow = windows[5]!.window;
-    const reposition = vi.fn();
     const persist = vi.fn(() => true);
-    const controls = registerOverlayEditor(persist, reposition);
+    const controls = registerOverlayEditor(persist);
     ctx.overlaySettings.overlayLayouts = Object.fromEntries(
       OVERLAY_LAYOUT_KINDS.map((kind) => [
         kind,
@@ -341,10 +347,7 @@ describe("overlay editor IPC boundaries", () => {
     const native = windowStub(2, "riven-overlay.html");
     ctx.mainWindow = main.window;
     ctx.rivenOverlayLeftWindow = native.window;
-    registerOverlayEditor(
-      vi.fn(() => true),
-      vi.fn(),
-    );
+    registerOverlayEditor(vi.fn(() => true));
     const draft = (await invoke(OVERLAY_EDIT_BEGIN, main.event, "rivenLeft")) as OverlayEditState;
     for (const [channel, args] of [
       [OVERLAY_EDIT_BEGIN, ["rivenLeft"]],
@@ -380,10 +383,7 @@ describe("overlay editor IPC boundaries", () => {
     async (kind) => {
       const main = windowStub(1, "dist/index.html");
       ctx.mainWindow = main.window;
-      registerOverlayEditor(
-        vi.fn(() => true),
-        vi.fn(),
-      );
+      registerOverlayEditor(vi.fn(() => true));
       await expect(invoke(OVERLAY_EDIT_BEGIN, main.event, kind)).rejects.toThrow(
         "Invalid overlay kind",
       );

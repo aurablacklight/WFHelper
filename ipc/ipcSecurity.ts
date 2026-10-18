@@ -5,6 +5,7 @@ import { ipcMain } from "electron";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
 import ctx from "./context";
+import { OVERLAY_KINDS, overlayWindow, type OverlayKind } from "./overlay/registry";
 import { withScope } from "../services/logger";
 import { normalizeErrorMessage } from "../config/shared/errors";
 import { normalizePathForCompare } from "../config/shared/pathCompare";
@@ -142,66 +143,49 @@ function assertMainRendererSender(event: IpcEventLike, _channel: string): void {
   );
 }
 
-function overlayWindowCandidates(): BrowserWindowCandidate[] {
-  return [
-    { win: ctx.overlayWindow, suffix: OVERLAY_RENDERER_SUFFIX },
-    { win: ctx.plannerOverlayWindow, suffix: OVERLAY_RENDERER_SUFFIX },
-    { win: ctx.rivenOverlayLeftWindow, suffix: RIVEN_OVERLAY_RENDERER_SUFFIX },
-    { win: ctx.rivenOverlayRightWindow, suffix: RIVEN_OVERLAY_RENDERER_SUFFIX },
-    { win: ctx.arbiSummaryWindow, suffix: ARBI_SUMMARY_RENDERER_SUFFIX },
-  ];
+const OVERLAY_RENDERER_SUFFIXES: Record<OverlayKind, string> = {
+  reward: OVERLAY_RENDERER_SUFFIX,
+  planner: OVERLAY_RENDERER_SUFFIX,
+  rivenLeft: RIVEN_OVERLAY_RENDERER_SUFFIX,
+  rivenRight: RIVEN_OVERLAY_RENDERER_SUFFIX,
+  arbiSummary: ARBI_SUMMARY_RENDERER_SUFFIX,
+  tradeNotification: TRADE_NOTIFICATION_RENDERER_SUFFIX,
+};
+
+function overlayCandidates(kinds: readonly OverlayKind[]): BrowserWindowCandidate[] {
+  return kinds.map((kind) => ({
+    win: overlayWindow(kind),
+    suffix: OVERLAY_RENDERER_SUFFIXES[kind],
+  }));
 }
 
+// The trade toast shares localization, theme and layout reads, but no scan controls.
+const SCAN_OVERLAY_KINDS = OVERLAY_KINDS.filter((kind) => kind !== "tradeNotification");
+
 function assertOverlayRendererSender(event: IpcEventLike, _channel: string): void {
-  assertAnyCandidateWindowSender(event, overlayWindowCandidates(), {
+  assertAnyCandidateWindowSender(event, overlayCandidates(SCAN_OVERLAY_KINDS), {
     fallbackMessage: "No matching overlay window for sender",
   });
 }
 
-// The trade toast shares localization, theme and layout reads, but no scan controls.
 function assertLocalizedOverlaySender(event: IpcEventLike, _channel: string): void {
-  const candidates = overlayWindowCandidates();
-  candidates.push({ win: ctx.tradeNotificationWindow, suffix: TRADE_NOTIFICATION_RENDERER_SUFFIX });
-  assertAnyCandidateWindowSender(event, candidates, {
+  assertAnyCandidateWindowSender(event, overlayCandidates(OVERLAY_KINDS), {
     fallbackMessage: "No matching overlay window for sender",
   });
 }
 
 function assertArbiSummarySender(event: IpcEventLike, _channel: string): void {
-  assertWindowSender(
-    event,
-    ctx.arbiSummaryWindow
-      ? {
-          isDestroyed: () => ctx.arbiSummaryWindow?.isDestroyed() ?? true,
-          webContents: { id: ctx.arbiSummaryWindow.webContents.id },
-        }
-      : null,
-    ARBI_SUMMARY_RENDERER_SUFFIX,
-  );
+  assertCandidateWindowSender(event, overlayCandidates(["arbiSummary"])[0]!);
 }
 
 function assertTradeNotificationSender(event: IpcEventLike, _channel: string): void {
-  assertWindowSender(
-    event,
-    ctx.tradeNotificationWindow
-      ? {
-          isDestroyed: () => ctx.tradeNotificationWindow?.isDestroyed() ?? true,
-          webContents: { id: ctx.tradeNotificationWindow.webContents.id },
-        }
-      : null,
-    TRADE_NOTIFICATION_RENDERER_SUFFIX,
-  );
+  assertCandidateWindowSender(event, overlayCandidates(["tradeNotification"])[0]!);
 }
 
 function assertRivenOverlayRendererSender(event: IpcEventLike, _channel: string): void {
-  assertAnyCandidateWindowSender(
-    event,
-    [
-      { win: ctx.rivenOverlayLeftWindow, suffix: RIVEN_OVERLAY_RENDERER_SUFFIX },
-      { win: ctx.rivenOverlayRightWindow, suffix: RIVEN_OVERLAY_RENDERER_SUFFIX },
-    ],
-    { throwLastError: true },
-  );
+  assertAnyCandidateWindowSender(event, overlayCandidates(["rivenLeft", "rivenRight"]), {
+    throwLastError: true,
+  });
 }
 
 type AssertSenderFn = (event: IpcEventLike, channel: string) => void;

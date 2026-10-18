@@ -35,3 +35,10 @@ Domain terms for this repository. A glossary only: no implementation detail.
 - **Sustained DPS**: burst DPS spread over a full magazine and its reload.
 - **Validation**: comparing computed arsenal stats for a saved config with the
   arsenal screen. A rule is trusted only after it passes.
+
+## Overlays
+
+- **Overlay**: a window WFHelper draws over the running game.
+- **Overlay kind**: one of the overlays the game screen can show: relic rewards,
+  relic planner, left and right riven panels, Arbitration summary and trade
+  toast. Each kind has its own window, saved position and saved layout.

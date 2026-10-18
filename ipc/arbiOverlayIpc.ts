@@ -1,10 +1,13 @@
 import { getOverlayDescriptor } from "../config/shared/overlayLayout";
 import ctx from "./context";
 import { assertArbiSummarySender, onAuthorized } from "./ipcSecurity";
+import { createOverlayWindowsController } from "./overlay/windows";
 import {
-  createOverlayWindowBoundsChangeHandler,
-  createOverlayWindowsController,
-} from "./overlay/windows";
+  controllerAdapter,
+  overlayWindowSlot,
+  registerOverlay,
+  rememberOverlayWindowBounds,
+} from "./overlay/registry";
 import { registerZOrderSubscriber, syncUnfocusHide } from "./overlay/zOrder";
 import { withScope } from "../services/logger";
 import { hardenBrowserWindowNavigation } from "../services/windowSecurity";
@@ -31,23 +34,12 @@ const AUTO_HIDE_MS = 60_000;
 const WIN_W = getOverlayDescriptor("arbiSummary").canvas.width;
 const WIN_H = getOverlayDescriptor("arbiSummary").canvas.height;
 
-let persistOverlaySettings: (() => void) | null = null;
-const rememberOverlayWindowBounds = createOverlayWindowBoundsChangeHandler({
-  ctx,
-  save: () => {
-    persistOverlaySettings?.();
-  },
-});
-
 export const arbiSummaryWindowsController = createOverlayWindowsController({
   app,
   BrowserWindow,
   screen,
   ctx,
-  getOverlayWindow: () => ctx.arbiSummaryWindow,
-  setOverlayWindow: (window) => {
-    ctx.arbiSummaryWindow = window;
-  },
+  ...overlayWindowSlot("arbiSummary"),
   getOverlayInteractiveMode: () => false,
   setOverlayInteractiveModeState: () => {},
   persistBoundsWhenPassive: true,
@@ -71,6 +63,12 @@ export const arbiSummaryWindowsController = createOverlayWindowsController({
   onWindowBoundsChanged: rememberOverlayWindowBounds,
 });
 
+// Never click-through, so it always takes a drag; its renderer reports ARBI_SUMMARY_READY.
+registerOverlay(
+  "arbiSummary",
+  controllerAdapter(arbiSummaryWindowsController, () => true, { reportsReady: false }),
+);
+
 registerZOrderSubscriber({
   isActive: () =>
     arbiSummaryWindowsController.isOverlayWindowVisible() ||
@@ -79,10 +77,6 @@ registerZOrderSubscriber({
     syncUnfocusHide("arbi summary", [arbiSummaryWindowsController], warframeFocused, foreground);
   },
 });
-
-export function isArbiSummaryWindow(win: InstanceType<typeof BrowserWindow>): boolean {
-  return !!ctx.arbiSummaryWindow && win === ctx.arbiSummaryWindow;
-}
 
 function hideArbiSummary(): void {
   arbiSummaryWindowsController.clearOverlayAutoHideTimer();
@@ -100,18 +94,6 @@ export function maybeShowArbiSummary(run: ArbiRunRecord): void {
   arbiSummaryWindowsController.createOverlayWindow();
   arbiSummaryWindowsController.sendOverlayEvent(ARBI_SUMMARY_DATA, payload);
   arbiSummaryWindowsController.scheduleOverlayAutoHide(AUTO_HIDE_MS);
-}
-
-export function getArbiSummaryPlacementRect() {
-  return arbiSummaryWindowsController.getOverlayBoundsForActiveDisplay();
-}
-
-export function positionArbiSummaryWindow(): void {
-  arbiSummaryWindowsController.positionOverlayWindow(arbiSummaryWindowsController.getAnchorMeta());
-}
-
-export function configureOverlaySettingsPersistence(persist: () => void): void {
-  persistOverlaySettings = persist;
 }
 
 export function register(): void {
