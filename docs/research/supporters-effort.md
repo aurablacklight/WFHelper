@@ -37,10 +37,10 @@ How it already behaves:
 
 Edits:
 
-| File | Change |
-| --- | --- |
+| File                                            | Change                                                                                                                                                                                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `backend/worker/wrangler.jsonc` (lines 108-109) | Set `DISCORD_GUILD_ID` and `DISCORD_ROLE_TIER_MAP` to `""`. Optional, because the missing token already turns the sync off, but it stops the fork's config from naming upstream's Discord guild. |
-| Deploy runbook (secrets ticket) | Say that `DISCORD_BOT_TOKEN` is deliberately not set. |
+| Deploy runbook (secrets ticket)                 | Say that `DISCORD_BOT_TOKEN` is deliberately not set.                                                                                                                                            |
 
 Effort: about 2 lines. Tests: none change.
 
@@ -50,20 +50,20 @@ observability, and #21 already puts fork-specific values there.
 
 ## Option (a): remove the feature
 
-| File | Supporter references | What has to go |
-| --- | --- | --- |
-| `src/services/supporters.ts` | whole file, 256 lines | delete |
-| `src/routes/public.ts` | 13 | import, `supportersRequests` stat, cache constants, the route block |
-| `src/routes/admin.ts` | 5 | import, the exclusions and sync routes |
-| `src/index.ts` | 4 | import, the route classifier entry, the `cron:supporters` stage |
-| `src/config.ts` | 4 | `parseRoleTierMap`, two config fields |
-| `src/constants.ts` | 3 | `SUPPORTERS_KEY`, `SUPPORTER_EXCLUSIONS_KEY`, `LEGACY_PATREON_KEYS` |
-| `src/types.ts` | 5 | `Supporter*` types, three `DISCORD_*` env fields |
-| `src/security/rateLimit.ts` | 1 | the `'supporters'` bucket |
-| `wrangler.jsonc` | 2 | the Discord vars, the cron comment |
-| `test/index.spec.ts` | 38 | the `discord supporters` describe (lines 2277-2555), plus cron tests such as "keeps the later daily stages running when the supporter sync throws" (line 2646), which also guard other cron stages |
-| `test/clientIdentity.spec.ts` | 18 | uses `/v1/supporters` as its probe route for the client-policy tests, so every case has to move to another public route |
-| `README.md`, `ARCHITECTURE.md` | 4, 14 | route lists, the "Supporter credits" section |
+| File                           | Supporter references  | What has to go                                                                                                                                                                                     |
+| ------------------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/services/supporters.ts`   | whole file, 256 lines | delete                                                                                                                                                                                             |
+| `src/routes/public.ts`         | 13                    | import, `supportersRequests` stat, cache constants, the route block                                                                                                                                |
+| `src/routes/admin.ts`          | 5                     | import, the exclusions and sync routes                                                                                                                                                             |
+| `src/index.ts`                 | 4                     | import, the route classifier entry, the `cron:supporters` stage                                                                                                                                    |
+| `src/config.ts`                | 4                     | `parseRoleTierMap`, two config fields                                                                                                                                                              |
+| `src/constants.ts`             | 3                     | `SUPPORTERS_KEY`, `SUPPORTER_EXCLUSIONS_KEY`, `LEGACY_PATREON_KEYS`                                                                                                                                |
+| `src/types.ts`                 | 5                     | `Supporter*` types, three `DISCORD_*` env fields                                                                                                                                                   |
+| `src/security/rateLimit.ts`    | 1                     | the `'supporters'` bucket                                                                                                                                                                          |
+| `wrangler.jsonc`               | 2                     | the Discord vars, the cron comment                                                                                                                                                                 |
+| `test/index.spec.ts`           | 38                    | the `discord supporters` describe (lines 2277-2555), plus cron tests such as "keeps the later daily stages running when the supporter sync throws" (line 2646), which also guard other cron stages |
+| `test/clientIdentity.spec.ts`  | 18                    | uses `/v1/supporters` as its probe route for the client-policy tests, so every case has to move to another public route                                                                            |
+| `README.md`, `ARCHITECTURE.md` | 4, 14                 | route lists, the "Supporter credits" section                                                                                                                                                       |
 
 Effort: 12 files, about 600 lines removed, plus re-pointing the client-identity tests and
 checking that the cron-resilience tests still cover the other stages. That is a small PR, but
