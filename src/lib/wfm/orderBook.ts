@@ -40,7 +40,6 @@ interface OrderBookDebugCounters {
   cacheHitOk: number;
   cacheHitNoData: number;
   httpCalls: number;
-  v1FallbackCalls: number;
   resultOk: number;
   resultNoData: number;
   resultError: number;
@@ -60,7 +59,6 @@ const orderBookDebugCounters: OrderBookDebugCounters = {
   cacheHitOk: 0,
   cacheHitNoData: 0,
   httpCalls: 0,
-  v1FallbackCalls: 0,
   resultOk: 0,
   resultNoData: 0,
   resultError: 0,
@@ -94,7 +92,7 @@ async function fetchRawOrdersFromEndpoint(
       return { data: rawOrders, transient: false };
     });
   } catch {
-    // A stalled or unparsable body is transient; a v1 miss would cache it as not_found.
+    // A stalled or unparsable body is transient; a miss would cache it as not_found.
     return { data: null, transient: true };
   }
 }
@@ -135,42 +133,8 @@ async function fetchDirectOrderBook(
       },
     };
   }
-  if (v2Attempt.transient) {
-    bumpCounter("resultError");
-    return { status: "error", slug };
-  }
-
-  bumpCounter("v1FallbackCalls");
-  const v1Attempt = await fetchRawOrdersFromEndpoint(
-    `https://api.warframe.market/v1/items/${slug}/orders`,
-  );
-  if (v1Attempt.data) {
-    bumpCounter("resultOk");
-    return {
-      status: "ok",
-      data: {
-        slug,
-        sell: normalizeWfmOrderBookSide(
-          v1Attempt.data,
-          "sell",
-          rank,
-          Number.MAX_SAFE_INTEGER,
-          subtype,
-        ),
-        buy: normalizeWfmOrderBookSide(
-          v1Attempt.data,
-          "buy",
-          rank,
-          Number.MAX_SAFE_INTEGER,
-          subtype,
-        ),
-        timestamp: Date.now(),
-      },
-    };
-  }
-
-  bumpCounter(v1Attempt.transient ? "resultError" : "resultNoData");
-  return v1Attempt.transient ? { status: "error", slug } : { status: "not_found", slug };
+  bumpCounter(v2Attempt.transient ? "resultError" : "resultNoData");
+  return v2Attempt.transient ? { status: "error", slug } : { status: "not_found", slug };
 }
 
 export function resetOrderBookDebugCounters(): void {
