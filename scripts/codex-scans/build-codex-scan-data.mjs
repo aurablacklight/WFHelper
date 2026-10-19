@@ -1,4 +1,4 @@
-// Builds Codex scan data from the Warframe wiki enemy modules (CC BY-SA) and
+// Builds Codex scan data from the Warframe wiki enemy modules (CC BY-NC-SA 3.0) and
 // DE PublicExport animals, objects and fragments.
 
 import crypto from "node:crypto";
