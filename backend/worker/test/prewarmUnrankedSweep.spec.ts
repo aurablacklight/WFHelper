@@ -63,7 +63,7 @@ function jsonOk(body: unknown): Response {
 function mockWfm(slug: string, stats: () => unknown): ReturnType<typeof vi.fn> {
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		const url = String(input instanceof Request ? input.url : input);
-		if (url === `https://api.warframe.market/v2/items/${slug}`) {
+		if (url === `https://api.warframe.market/v2/item/${slug}`) {
 			return jsonOk({ data: { slug, tradable: true, i18n: { en: {} } } });
 		}
 		if (url === `https://api.warframe.market/v1/items/${slug}/statistics`) {

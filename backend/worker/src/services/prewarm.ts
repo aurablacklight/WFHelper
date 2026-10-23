@@ -195,7 +195,7 @@ export async function fetchPricePayload(
 export async function fetchMetaPayload(slug: string): Promise<FetchResult<MetaPayload>> {
 	let response: Response;
 	try {
-		response = await fetch(`https://api.warframe.market/v2/items/${encodeURIComponent(slug)}`, {
+		response = await fetch(`https://api.warframe.market/v2/item/${encodeURIComponent(slug)}`, {
 			headers: WFM_HEADERS,
 		});
 	} catch {
@@ -259,31 +259,15 @@ export async function fetchOrdersPayload(
 	const targetSubtype = options?.subtype ?? null;
 
 	const v2Attempt = await fetchRawOrdersFromEndpoint(`https://api.warframe.market/v2/orders/item/${encodeURIComponent(slug)}`);
-	if (v2Attempt.data) {
-		return {
-			data: {
-				slug,
-				sell: normalizeWfmOrderBookSide(v2Attempt.data, 'sell', targetRank, undefined, targetSubtype),
-				buy: normalizeWfmOrderBookSide(v2Attempt.data, 'buy', targetRank, undefined, targetSubtype),
-				timestamp: Date.now(),
-			},
-			transient: false,
-		};
-	}
-	if (v2Attempt.transient) {
-		return { data: null, transient: true };
-	}
-
-	const v1Attempt = await fetchRawOrdersFromEndpoint(`https://api.warframe.market/v1/items/${encodeURIComponent(slug)}/orders`);
-	if (!v1Attempt.data) {
-		return { data: null, transient: v1Attempt.transient };
+	if (!v2Attempt.data) {
+		return { data: null, transient: v2Attempt.transient };
 	}
 
 	return {
 		data: {
 			slug,
-			sell: normalizeWfmOrderBookSide(v1Attempt.data, 'sell', targetRank, undefined, targetSubtype),
-			buy: normalizeWfmOrderBookSide(v1Attempt.data, 'buy', targetRank, undefined, targetSubtype),
+			sell: normalizeWfmOrderBookSide(v2Attempt.data, 'sell', targetRank, undefined, targetSubtype),
+			buy: normalizeWfmOrderBookSide(v2Attempt.data, 'buy', targetRank, undefined, targetSubtype),
 			timestamp: Date.now(),
 		},
 		transient: false,
