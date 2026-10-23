@@ -1,5 +1,5 @@
 // Typed shim over the generated table (scripts/codex-scans/build-codex-scan-data.mjs
-// writes the JSON; source wiki.warframe.com Module:Enemies/data/*, CC BY-SA).
+// writes the JSON; source wiki.warframe.com Module:Enemies/data/*, CC BY-NC-SA 3.0).
 import data from "./codexScanRequirements.json";
 import type {
   CodexFactionPlanets,
