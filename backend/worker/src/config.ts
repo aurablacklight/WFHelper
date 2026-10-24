@@ -1,5 +1,6 @@
 import type { Env, SupporterTier } from './types';
 import { clamp, parsePositiveInt } from './utils';
+import { WFM_AUCTION_SEARCH_GAP_MS, WFM_CALL_GAP_MS } from './services/wfmPacing';
 
 // Role ids are opaque Discord snowflakes, so the map is validated by value only.
 function parseRoleTierMap(raw: string | undefined): Record<string, SupporterTier> {
@@ -26,6 +27,12 @@ const MAX_CLIENT_PRODUCT_LENGTH = 32;
 const MAX_CLIENT_LIST_ENTRIES = 32;
 // Lowercased because product names are compared without case.
 const DEFAULT_CLIENT_ALLOW = ['wfhelper'];
+
+// "0" is a real value here (tests turn pacing off), so parsePositiveInt would not do.
+function parseGapMs(raw: string | undefined, fallbackValue: number): number {
+	const value = Number(raw?.trim() || NaN);
+	return Number.isFinite(value) ? clamp(Math.floor(value), 0, 60000) : fallbackValue;
+}
 
 function parseProductList(raw: string | undefined, fallbackValue: string[] = []): string[] {
 	const names = (raw || '')
@@ -62,6 +69,8 @@ interface WorkerConfig {
 	priceSeedBatchSize: number;
 	topTradedEnabled: boolean;
 	topTradedBatchSize: number;
+	wfmCallGapMs: number;
+	wfmAuctionSearchGapMs: number;
 	wfcdReleaseAgeHours: number;
 	wfcdRelicsEnabled: boolean;
 	discordGuildId: string;
@@ -101,6 +110,8 @@ export function getWorkerConfig(env: Env): WorkerConfig {
 		// slugs, up to 8 ops each) plus order summaries (72 rank entries, 6 each) dominate
 		// the tick: one where all of them are due passes Cloudflare's ~1000 cap on its own.
 		topTradedBatchSize: clamp(parsePositiveInt(env.TOP_TRADED_BATCH_SIZE, 150), 1, 300),
+		wfmCallGapMs: parseGapMs(env.WFM_CALL_GAP_MS, WFM_CALL_GAP_MS),
+		wfmAuctionSearchGapMs: parseGapMs(env.WFM_AUCTION_SEARCH_GAP_MS, WFM_AUCTION_SEARCH_GAP_MS),
 		wfcdReleaseAgeHours: clamp(parsePositiveInt(env.WFCD_RELEASE_AGE_HOURS, 24), 1, 720),
 		wfcdRelicsEnabled: (env.WFCD_RELICS_ENABLED || '1').trim() !== '0',
 		discordGuildId: (env.DISCORD_GUILD_ID || '').trim(),
