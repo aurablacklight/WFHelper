@@ -3,7 +3,7 @@
 export const WFM_CALL_GAP_MS = 350;
 export const WFM_AUCTION_SEARCH_GAP_MS = 6500;
 
-export type WfmCallKind = 'call' | 'auction-search';
+type WfmCallKind = 'call' | 'auction-search';
 
 interface WfmGaps {
 	wfmCallGapMs: number;
