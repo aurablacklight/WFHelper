@@ -3,17 +3,24 @@ import os from "node:os";
 
 import { app } from "electron";
 
-import { backendClientHeader, BACKEND_URL } from "../config/shared/backendConfig";
-import { FEEDBACK_LIMITS, normalizeFeedback, type FeedbackResult } from "../config/shared/feedback";
+import { APP_PRODUCT_NAME } from "../config/shared/appMeta";
+import { backendClientHeader } from "../config/shared/backendConfig";
+import {
+  FEEDBACK_ENDPOINT,
+  FEEDBACK_LIMITS,
+  normalizeFeedback,
+  type FeedbackResult,
+} from "../config/shared/feedback";
 import { withAbortTimeout } from "../config/shared/fetchWithTimeout";
 
-import { getLogFilePath } from "../services/logger";
-import { redactLogPaths } from "../services/logPrivacy";
+import { getLogFilePath, withScope } from "../services/logger";
+import { redactLogPaths, redactLogSecrets } from "../services/logPrivacy";
 
 import { handle } from "./routeHandlers";
 import { mainWindowRoutes } from "../config/shared/ipcRoutes";
 
 const { api } = mainWindowRoutes;
+const log = withScope("feedback");
 
 function feedbackContext() {
   return {
@@ -36,7 +43,7 @@ function readLogTail(): string | undefined {
       fs.readSync(handle, buffer, 0, length, size - length);
       let text = buffer.toString("utf8");
       if (length < size) text = text.slice(text.indexOf("\n") + 1);
-      return text.trim().length > 0 ? redactLogPaths(text) : undefined;
+      return text.trim().length > 0 ? redactLogSecrets(redactLogPaths(text)) : undefined;
     } finally {
       fs.closeSync(handle);
     }
@@ -65,12 +72,12 @@ export function register(): void {
     sending = true;
     try {
       return await withAbortTimeout(35_000, async (signal): Promise<FeedbackResult> => {
-        const base = (process.env.VITE_WFM_BACKEND_URL || BACKEND_URL).replace(/\/+$/, "");
-        const response = await fetch(`${base}/v1/feedback`, {
+        const response = await fetch(FEEDBACK_ENDPOINT, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Accept: "application/json",
+            "User-Agent": `${APP_PRODUCT_NAME}/${context.appVersion}`,
             ...backendClientHeader(context.appVersion),
           },
           body: JSON.stringify(report),
@@ -82,14 +89,23 @@ export function register(): void {
           return { ok: false, error: "unavailable" };
         if (response.status === 400 || response.status === 413)
           return { ok: false, error: "invalid" };
-        if (!response.ok) return { ok: false, error: "failed" };
+        if (!response.ok) {
+          // A 403 with cf-mitigated means Cloudflare challenged the report before the Worker.
+          const mitigated = response.headers.get("cf-mitigated");
+          log.warn(
+            `Feedback refused: HTTP ${response.status}${mitigated ? ` (${mitigated})` : ""}`,
+          );
+          return { ok: false, error: "failed" };
+        }
         const result: unknown = await response.json();
         if (!result || typeof result !== "object" || !("ok" in result) || result.ok !== true)
           return { ok: false, error: "failed" };
         nextSubmission = Date.now() + 30_000;
         return { ok: true };
       });
-    } catch {
+    } catch (error) {
+      // The class alone: this file never logs report content.
+      log.warn(`Feedback not sent: ${error instanceof Error ? error.name : "unknown error"}`);
       return { ok: false, error: "failed" };
     } finally {
       sending = false;

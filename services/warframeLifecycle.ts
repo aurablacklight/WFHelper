@@ -46,7 +46,8 @@ async function removeTask(name: string): Promise<void> {
   if (!(await runSchtasks(["/Query", "/TN", name])).ok) return;
   const removed = await runSchtasks(["/Delete", "/TN", name, "/F"]);
   if (!removed.ok) {
-    log.warn(`Could not remove the sign-in task ${name}:`, removed.output || "unknown error");
+    // The task name carries the Windows account name, and this log can be sent as feedback.
+    log.warn("Could not remove the sign-in task:", removed.output || "unknown error");
   }
 }
 

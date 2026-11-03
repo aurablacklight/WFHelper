@@ -4,7 +4,11 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FEEDBACK_LIMITS, normalizeFeedback } from "../../config/shared/feedback";
+import {
+  FEEDBACK_ENDPOINT,
+  FEEDBACK_LIMITS,
+  normalizeFeedback,
+} from "../../config/shared/feedback";
 import { FEEDBACK_CONTEXT, FEEDBACK_SUBMIT } from "../../config/shared/ipcChannels";
 import { register } from "../../ipc/feedbackIpc";
 
@@ -13,9 +17,13 @@ const mocks = vi.hoisted(() => ({
   assertMainRendererSender: vi.fn(),
   getVersion: vi.fn(() => "2.0.0-test"),
   logPath: null as string | null,
+  warn: vi.fn(),
 }));
 vi.mock("electron", () => ({ app: { getVersion: mocks.getVersion } }));
-vi.mock("../../services/logger", () => ({ getLogFilePath: () => mocks.logPath }));
+vi.mock("../../services/logger", () => ({
+  getLogFilePath: () => mocks.logPath,
+  withScope: () => ({ warn: mocks.warn }),
+}));
 vi.mock("../../ipc/ipcSecurity", () => ({
   handleAuthorized: mocks.handleAuthorized,
   assertMainRendererSender: mocks.assertMainRendererSender,
@@ -164,12 +172,13 @@ describe("feedback submission IPC", () => {
     request.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
     expect(await submit(null, { ...report, diagnostics })).toEqual({ ok: true });
     const [url, init] = request.mock.calls[0]!;
-    expect(String(url)).toMatch(/\/v1\/feedback$/);
+    expect(String(url)).toBe("https://wfhelper-feedback.docker-senpai.dev/v1/feedback");
     expect(init).toMatchObject({
       method: "POST",
       redirect: "error",
       signal: expect.any(AbortSignal),
     });
+    expect(init?.headers).toMatchObject({ "User-Agent": "WFHelper/2.0.0-test" });
     expect(JSON.parse(String(init?.body))).toEqual({
       ...report,
       title: report.title.trim(),
@@ -183,6 +192,40 @@ describe("feedback submission IPC", () => {
     await vi.advanceTimersByTimeAsync(30_001);
     request.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
     expect(await submit(null, report)).toEqual({ ok: true });
+  });
+
+  it("ignores the backend env override, which could redirect a report", async () => {
+    vi.stubEnv("VITE_WFM_BACKEND_URL", "https://elsewhere.example");
+    request.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+    await submit(null, report);
+    expect(String(request.mock.calls[0]![0])).toBe(FEEDBACK_ENDPOINT);
+    vi.unstubAllEnvs();
+  });
+
+  it("logs why delivery failed without logging the report", async () => {
+    request.mockResolvedValueOnce(
+      new Response("challenge", { status: 403, headers: { "cf-mitigated": "challenge" } }),
+    );
+    expect(await submit(null, report)).toEqual({ ok: false, error: "failed" });
+    expect(mocks.warn).toHaveBeenCalledWith("Feedback refused: HTTP 403 (challenge)");
+    request.mockRejectedValueOnce(new TypeError("fetch failed for a secret reason"));
+    expect(await submit(null, report)).toEqual({ ok: false, error: "failed" });
+    expect(mocks.warn).toHaveBeenCalledWith("Feedback not sent: TypeError");
+  });
+
+  it("scrubs token shapes from the attached log", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wfh-feedback-"));
+    mocks.logPath = path.join(dir, "main.log");
+    fs.writeFileSync(mocks.logPath, "fetch accountId=abc&nonce=123 failed for me@example.com\n");
+    request.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+    await submit(null, { ...report, diagnostics });
+    const sent = JSON.parse(String(request.mock.calls[0]![1]?.body)) as {
+      diagnostics: { log: string };
+    };
+    expect(sent.diagnostics.log).toContain("accountId=[redacted]&nonce=[redacted]");
+    expect(sent.diagnostics.log).not.toContain("me@example.com");
+    mocks.logPath = null;
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it("attaches the newest lines of main.log when diagnostics are included", async () => {

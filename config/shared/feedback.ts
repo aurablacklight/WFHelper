@@ -1,6 +1,10 @@
 import { asRecord as record } from "./objectValidation";
 import { isBoundedBase64 } from "./base64";
 
+/** The fork's feedback Worker. Baked in on purpose: an env override read in the main
+ *  process could redirect a friend's report and log. */
+export const FEEDBACK_ENDPOINT = "https://wfhelper-feedback.docker-senpai.dev/v1/feedback";
+
 export const FEEDBACK_LIMITS = {
   title: 120,
   description: 4000,
