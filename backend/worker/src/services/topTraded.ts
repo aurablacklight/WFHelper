@@ -6,6 +6,7 @@ import { logEvent } from './logging';
 import { barePriceFetchRank, fetchCatalogSlugs, readClientCatalogFromKv, readRankedSlugsFromKv } from './prewarmCatalog';
 import { isRecord, utcDate } from '../utils';
 import { fetchItemStatistics, statsDayEntries, utcDayBefore } from './wfmStatistics';
+import { paceWfmCall } from './wfmPacing';
 import type { Env } from '../types';
 import { clamp, getJsonFromKv } from '../utils';
 import { toFiniteNumber } from '../../../../config/shared/numeric';
@@ -246,6 +247,7 @@ export async function sweepTopTraded(env: Env, options: { now?: number; batchSiz
 		const byDate = new Map<string, Map<string, VolumeSample>>();
 		for (let index = cursorBefore; index < cursorAfter; index += 1) {
 			const slug = slugs[index];
+			await paceWfmCall(config);
 			const payload = await fetchItemStatistics(slug);
 			const rows = volumeRowsFromStats(payload, barePriceFetchRank(slug, rankedSlugs), oldest, today);
 			result.processed += 1;

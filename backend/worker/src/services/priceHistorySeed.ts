@@ -13,6 +13,7 @@ import { logEvent } from './logging';
 import { barePriceFetchRank, fetchCatalogSlugs, readRankedSlugsFromKv } from './prewarmCatalog';
 import { byteLength, utcDate } from '../utils';
 import { fetchItemStatistics, isDateId, statsDayEntries, utcDayBefore } from './wfmStatistics';
+import { paceWfmCall } from './wfmPacing';
 import type { Env } from '../types';
 import { clamp, getJsonFromKv } from '../utils';
 import { toFiniteNumber } from '../../../../config/shared/numeric';
@@ -269,6 +270,7 @@ export async function seedPriceHistory(env: Env, options: { now?: number; batchS
 		const failedSlugs = [...(state?.failedSlugs ?? [])];
 		for (let index = cursorBefore; index < cursorAfter; index += 1) {
 			const slug = list[index];
+			await paceWfmCall(config);
 			const payload = await fetchItemStatistics(slug);
 			const rows = seedRowsFromStats(payload, slug, barePriceFetchRank(slug, rankedSlugs), dateWindow);
 			result.processed += 1;

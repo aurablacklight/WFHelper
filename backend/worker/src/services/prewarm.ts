@@ -36,6 +36,7 @@ import {
 	sanitizeOrderSummaryHotsetEntries,
 } from './prewarmCatalog';
 import { workerOrderSummarySubtypeCacheKey, type OrderSubtype } from './orderSubtype';
+import { paceWfmCall } from './wfmPacing';
 
 export {
 	buildOrderSummaryPayload,
@@ -252,12 +253,14 @@ async function fetchRawOrdersFromEndpoint(url: string): Promise<FetchResult<unkn
 
 export async function fetchOrdersPayload(
 	slug: string,
-	options?: { rank?: number | null; subtype?: OrderSubtype | null },
+	// The sweeps pass a pacer so each call to WFM stays inside its rate limit.
+	options?: { rank?: number | null; subtype?: OrderSubtype | null; pace?: () => Promise<void> },
 ): Promise<FetchResult<OrdersPayload>> {
 	const targetRank = normalizeRankFilter(options?.rank);
 	// Missing-subtype-counts-as-intact lives in normalizeWfmOrderBookSide.
 	const targetSubtype = options?.subtype ?? null;
 
+	await options?.pace?.();
 	const v2Attempt = await fetchRawOrdersFromEndpoint(`https://api.warframe.market/v2/orders/item/${encodeURIComponent(slug)}`);
 	if (!v2Attempt.data) {
 		return { data: null, transient: v2Attempt.transient };
@@ -433,7 +436,7 @@ export async function prewarmOrderSummaryHotset(
 		const entry = hotset[(cursor + i) % hotset.length];
 		for (const rank of [0, entry.maxRank]) {
 			try {
-				const ordersResult = await fetchOrdersPayload(entry.slug, { rank });
+				const ordersResult = await fetchOrdersPayload(entry.slug, { rank, pace: () => paceWfmCall(config) });
 				if (!ordersResult.data) {
 					if (!ordersResult.transient) {
 						const payload = {
@@ -544,7 +547,7 @@ export async function prewarmOrderSummaryCatalog(
 
 			try {
 				if (shouldRefreshOrderSummary) {
-					const ordersResult = await fetchOrdersPayload(entry.slug, { rank });
+					const ordersResult = await fetchOrdersPayload(entry.slug, { rank, pace: () => paceWfmCall(config) });
 					if (!ordersResult.data) {
 						if (!ordersResult.transient) {
 							const emptyPayload = {
@@ -595,6 +598,7 @@ export async function prewarmOrderSummaryCatalog(
 				try {
 					const snapshotPriceKey = snapshotCacheKeyFromWorkerKey(priceKey);
 					if (!snapshotPriceKey) continue;
+					await paceWfmCall(config);
 					const priceResult = await fetchPricePayload(entry.slug, { rank });
 					if (priceResult.data) {
 						await putPricePayload(env, entry.slug, priceResult.data, rank);
@@ -722,6 +726,7 @@ export async function prewarmBatch(
 			}
 
 			if (shouldRefreshMeta) {
+				await paceWfmCall(config);
 				const metaResult = await fetchMetaPayload(slug);
 				if (!metaResult.data) {
 					result.failures += 1;
@@ -741,6 +746,7 @@ export async function prewarmBatch(
 			// this sweep; the catalog refresh rebuilds the ranked key.
 			if (shouldRefreshPrice && rankedSlugs) {
 				const priceRank = barePriceFetchRank(slug, rankedSlugs);
+				await paceWfmCall(config);
 				const priceResult = await fetchPricePayload(slug, priceRank != null ? { rank: priceRank } : undefined);
 				if (priceResult.data) {
 					await putPricePayload(env, slug, priceResult.data);

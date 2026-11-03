@@ -5,6 +5,8 @@ export default defineWorkersConfig({
 		poolOptions: {
 			workers: {
 				wrangler: { configPath: './wrangler.jsonc' },
+				// Sweeps would sleep between mocked upstream calls; wfmPacing.spec.ts covers the gaps.
+				miniflare: { bindings: { WFM_CALL_GAP_MS: '0', WFM_AUCTION_SEARCH_GAP_MS: '0' } },
 			},
 		},
 		// Smoke tests hit the live deployed worker. Keep them out of the default

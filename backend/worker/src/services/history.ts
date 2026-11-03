@@ -20,6 +20,7 @@ import { withAbortTimeout } from '../../../../config/shared/fetchWithTimeout';
 import { baroVisitId, migrateBaroHistory } from './baroHistory';
 import { storeItemPath } from '../../../../config/shared/itemPath';
 import { readResponseText } from '../../../../config/shared/readResponseText';
+import { paceWfmCall } from './wfmPacing';
 
 const DAY_SEC = 24 * 60 * 60;
 const MAX_INDEX_ENTRIES = 4096;
@@ -462,6 +463,7 @@ async function loadRivenWeapons(env: Env, now: number): Promise<string[]> {
 	const updatedAt = numeric(stored?.updatedAt) ?? 0;
 	if (cached.length > 0 && now - updatedAt < RIVEN_WEAPON_LIST_TTL_MS) return cached;
 
+	await paceWfmCall(getWorkerConfig(env));
 	const fetched = await fetchRivenWeaponList();
 	if (fetched.length === 0) return cached;
 
@@ -616,6 +618,7 @@ export async function sweepRivenArchive(env: Env, options: { now?: number; batch
 		// Serialized like the prewarm sweep: one upstream request at a time, never a burst.
 		for (let index = cursorBefore; index < cursorAfter; index += 1) {
 			const weapon = weapons[index];
+			await paceWfmCall(config, 'auction-search');
 			const { row, failed } = await fetchRivenAggregate(weapon);
 			result.processed += 1;
 			if (failed) {
