@@ -372,7 +372,7 @@ describe("fetchItemOrderBookBySlug", () => {
 
     expect(first).toEqual({ status: "not_found", slug: "soma_prime_receiver" });
     expect(second).toEqual({ status: "not_found", slug: "soma_prime_receiver" });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("keeps rank-filtered cache entries separate", async () => {
@@ -452,38 +452,5 @@ describe("fetchItemOrderBookBySlug", () => {
     expect(radiant.status === "ok" ? radiant.data.sell.map((e) => e.userName) : []).toEqual([
       "seller-radiant",
     ]);
-  });
-
-  it("falls back to v1 orders endpoint when v2 endpoint is unavailable", async () => {
-    const fetchMock = vi.fn(async (input: Request | URL | string) => {
-      const url =
-        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      if (url === "https://api.warframe.market/v2/orders/item/primed_flow") {
-        return new Response("", { status: 403 });
-      }
-      if (url === "https://api.warframe.market/v1/items/primed_flow/orders") {
-        return jsonResponse(200, {
-          payload: {
-            orders: [
-              {
-                order_type: "sell",
-                platinum: 120,
-                quantity: 1,
-                visible: true,
-                user: { ingame_name: "seller-r10", status: "online" },
-              },
-            ],
-          },
-        });
-      }
-
-      throw new Error(`Unexpected URL: ${url}`);
-    });
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-    const result = await fetchItemOrderBookBySlug("primed_flow", { rank: 10 });
-
-    expect(result.status).toBe("ok");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

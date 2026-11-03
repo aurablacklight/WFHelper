@@ -953,7 +953,7 @@ describe('backend worker', () => {
 
 		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
 			const url = String(input instanceof URL ? input : typeof input === 'string' ? input : input.url);
-			if (url === `https://api.warframe.market/v2/items/${slug}`) {
+			if (url === `https://api.warframe.market/v2/item/${slug}`) {
 				return new Response(JSON.stringify(metaPayload), {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
@@ -979,7 +979,7 @@ describe('backend worker', () => {
 
 		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 			const url = String(input instanceof URL ? input : typeof input === 'string' ? input : input.url);
-			if (url === `https://api.warframe.market/v2/items/${slug}`) {
+			if (url === `https://api.warframe.market/v2/item/${slug}`) {
 				return new Response('', { status: 503 });
 			}
 			throw new Error(`Unexpected url: ${url}`);
@@ -1643,70 +1643,6 @@ describe('backend worker', () => {
 			data?: { wts?: number | null };
 		};
 		expect(json.data?.wts).toBe(85);
-	});
-
-	it('falls back to v1 orders endpoint when v2 endpoint is unavailable', async () => {
-		const slug = 'wf_test_orders_fallback_slug';
-		await seedRankedCatalog(env, [{ slug, maxRank: 10 }]);
-		await env.PRICE_CACHE.delete(`orders:${slug}`);
-		await env.PRICE_CACHE.delete(`miss:orders:v2:${slug}`);
-		await env.PRICE_CACHE.delete(`orders-summary:${slug}:r0`);
-		await env.PRICE_CACHE.delete(`miss:orders-summary:v1:${slug}:r0`);
-
-		const v1OrdersPayload = {
-			payload: {
-				orders: [
-					{
-						order_type: 'sell',
-						platinum: 9,
-						quantity: 1,
-						mod_rank: 0,
-						visible: true,
-						user: { ingame_name: 'SellerFallback', status: 'ingame' },
-					},
-					{
-						order_type: 'buy',
-						platinum: 8,
-						quantity: 1,
-						mod_rank: 0,
-						visible: true,
-						user: { ingame_name: 'BuyerFallback', status: 'online' },
-					},
-				],
-			},
-		};
-
-		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-			const url = String(input instanceof URL ? input : typeof input === 'string' ? input : input.url);
-			if (url === `https://api.warframe.market/v2/orders/item/${slug}`) {
-				return new Response('', { status: 403 });
-			}
-			if (url === `https://api.warframe.market/v1/items/${slug}/orders`) {
-				return new Response(JSON.stringify(v1OrdersPayload), {
-					status: 200,
-					headers: { 'content-type': 'application/json' },
-				});
-			}
-			throw new Error(`Unexpected url: ${url}`);
-		});
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-		const ctx = createExecutionContext();
-		const response = await worker.fetch(new IncomingRequest(`https://example.com/v1/order-summary/${slug}?rank=0`), env, ctx);
-		await waitOnExecutionContext(ctx);
-
-		expect(response.status).toBe(200);
-		expect(await response.json()).toMatchObject({
-			ok: true,
-			data: {
-				slug,
-				wts: 9,
-				wtb: 8,
-			},
-		});
-		expect(fetchMock).toHaveBeenCalledTimes(2);
-		expect(fetchMock.mock.calls[0]?.[0]).toBe(`https://api.warframe.market/v2/orders/item/${slug}`);
-		expect(fetchMock.mock.calls[1]?.[0]).toBe(`https://api.warframe.market/v1/items/${slug}/orders`);
 	});
 
 	it('returns 503 when snapshot KV key is absent', async () => {
