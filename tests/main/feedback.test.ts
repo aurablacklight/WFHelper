@@ -206,7 +206,7 @@ describe("feedback submission IPC", () => {
     request.mockResolvedValueOnce(
       new Response("challenge", { status: 403, headers: { "cf-mitigated": "challenge" } }),
     );
-    expect(await submit(null, report)).toEqual({ ok: false, error: "failed" });
+    expect(await submit(null, report)).toEqual({ ok: false, error: "unavailable" });
     expect(mocks.warn).toHaveBeenCalledWith("Feedback refused: HTTP 403 (challenge)");
     request.mockRejectedValueOnce(new TypeError("fetch failed for a secret reason"));
     expect(await submit(null, report)).toEqual({ ok: false, error: "failed" });
@@ -224,6 +224,23 @@ describe("feedback submission IPC", () => {
     };
     expect(sent.diagnostics.log).toContain("accountId=[redacted]&nonce=[redacted]");
     expect(sent.diagnostics.log).not.toContain("me@example.com");
+    mocks.logPath = null;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps a scrubbed log within the relay's limit", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wfh-feedback-"));
+    mocks.logPath = path.join(dir, "main.log");
+    // Short emails grow into longer placeholders, so a full-size tail would overflow.
+    fs.writeFileSync(mocks.logPath, "a@b.cd x\n".repeat(FEEDBACK_LIMITS.logChars / 9 + 10));
+    request.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+    expect(await submit(null, { ...report, diagnostics })).toEqual({ ok: true });
+    const sent = JSON.parse(String(request.mock.calls[0]![1]?.body)) as {
+      diagnostics: { log: string };
+    };
+    expect(sent.diagnostics.log.length).toBeLessThanOrEqual(FEEDBACK_LIMITS.logChars);
+    expect(sent.diagnostics.log.startsWith("[redacted-email] x\n")).toBe(true);
+    expect(normalizeFeedback(sent)).not.toBeNull();
     mocks.logPath = null;
     fs.rmSync(dir, { recursive: true, force: true });
   });

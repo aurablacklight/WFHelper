@@ -43,7 +43,14 @@ function readLogTail(): string | undefined {
       fs.readSync(handle, buffer, 0, length, size - length);
       let text = buffer.toString("utf8");
       if (length < size) text = text.slice(text.indexOf("\n") + 1);
-      return text.trim().length > 0 ? redactLogSecrets(redactLogPaths(text)) : undefined;
+      if (text.trim().length === 0) return undefined;
+      text = redactLogSecrets(redactLogPaths(text));
+      // Placeholders can be longer than what they replace; the Worker rejects an over-long log.
+      if (text.length > FEEDBACK_LIMITS.logChars) {
+        text = text.slice(-FEEDBACK_LIMITS.logChars);
+        text = text.slice(text.indexOf("\n") + 1);
+      }
+      return text;
     } finally {
       fs.closeSync(handle);
     }
@@ -95,7 +102,8 @@ export function register(): void {
           log.warn(
             `Feedback refused: HTTP ${response.status}${mitigated ? ` (${mitigated})` : ""}`,
           );
-          return { ok: false, error: "failed" };
+          // A refusal means nothing was delivered, so "failed" would wrongly warn of a duplicate.
+          return { ok: false, error: response.status === 403 ? "unavailable" : "failed" };
         }
         const result: unknown = await response.json();
         if (!result || typeof result !== "object" || !("ok" in result) || result.ok !== true)

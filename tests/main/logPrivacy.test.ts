@@ -55,6 +55,30 @@ describe("log profile path privacy", () => {
     expect(redactLogSecrets(expected)).toBe(expected);
   });
 
+  it.each([
+    [`{ token: 'abc123', ok: false }`, `{ token: '[redacted]', ok: false }`],
+    [`{"token":"abcdef","nonce":"123"}`, `{"token":"[redacted]","nonce":"[redacted]"}`],
+    [
+      "x-api-key=k123 sessionId=s9 ticket=t1",
+      "x-api-key=[redacted] sessionId=[redacted] ticket=[redacted]",
+    ],
+  ])("scrubs printed objects and other keys in %s", (input, expected) => {
+    expect(redactLogSecrets(input)).toBe(expected);
+    expect(redactLogSecrets(expected)).toBe(expected);
+  });
+
+  it("leaves package specs alone", () => {
+    const text = "loaded @wfcd/items@5.0.0-beta.rc";
+    expect(redactLogSecrets(text)).toBe(text);
+  });
+
+  it("scrubs a long unbroken token in linear time", () => {
+    const run = "a".repeat(256 * 1024);
+    const started = performance.now();
+    expect(redactLogSecrets(run)).toBe(run);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
   it("keeps ordinary diagnostics when scrubbing secrets", () => {
     const text = "Relic scan took 320ms at scanner.ts:32:4 for Lith A1 (HTTP 404)";
     expect(redactLogSecrets(text)).toBe(text);

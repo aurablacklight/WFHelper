@@ -15,15 +15,23 @@ export function redactLogPaths(text: string): string {
 /** Second pass for logs that leave the machine: nothing should log these, but WFM error
  *  bodies and whole error objects are outside this app's control. */
 export function redactLogSecrets(text: string): string {
-  return text
-    .replace(/\b(accountId|nonce|authz|token|password)=[^\s&"']+/gi, "$1=[redacted]")
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
-    .replace(/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]+)?/g, "[redacted-jwt]")
-    .replace(/\b[0-9a-f]{24}\b/gi, "[redacted-id]")
-    .replace(
-      /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g,
-      "[redacted-email]",
-    );
+  return (
+    text
+      // key=value, key: 'value' and "key":"value", as URLs, util.inspect and JSON print them.
+      .replace(
+        /\b(accountId|nonce|authz|token|password|ticket|sessionId|api[_-]?key)(["']?\s*[:=]\s*["']?)[^\s&"',}]+/gi,
+        "$1$2[redacted]",
+      )
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [redacted]")
+      .replace(/\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}(?:\.[A-Za-z0-9_-]+)?/g, "[redacted-jwt]")
+      .replace(/\b[0-9a-f]{24}\b/gi, "[redacted-id]")
+      // The lookbehind starts a match only at the start of a run, so a long unbroken token
+      // stays linear; it also spares package specs such as `@scope/name@1.0.0-beta.rc`.
+      .replace(
+        /(?<![A-Za-z0-9._%+/-])[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63}){0,8}\.[A-Za-z]{2,24}\b/g,
+        "[redacted-email]",
+      )
+  );
 }
 
 export function redactStoredLog(filePath: string): void {
