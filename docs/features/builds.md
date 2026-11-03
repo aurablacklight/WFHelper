@@ -74,7 +74,7 @@ percentage should be checked against the game.
 ## Report a mismatch
 
 Use **Feedback** in the app or open a
-[bug report](https://github.com/WFHelper/WFHelper/issues). Include the weapon,
+[bug report](https://github.com/aurablacklight/WFHelper/issues). Include the weapon,
 mod ranks, selected Target, Stacks up and Fit capacity settings, expected value
 and displayed value. A cropped Upgrade-screen comparison helps. Do not include
 session tokens or a full account inventory export.

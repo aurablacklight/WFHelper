@@ -168,18 +168,10 @@ try {
   );
   if (process.argv.includes("--check-fork-sidebar")) {
     assert.equal(await page.locator("#sidebar [data-community-link]").count(), 0);
-    await app.evaluate(({ shell }) => {
-      globalThis.feedbackUrls = [];
-      shell.openExternal = async (url) => {
-        globalThis.feedbackUrls.push(url);
-      };
-    });
     await page.locator("#sidebar [data-feedback-open]").click();
-    await until(async () => (await app.evaluate(() => globalThis.feedbackUrls)).length > 0);
-    assert.deepEqual(await app.evaluate(() => globalThis.feedbackUrls), [
-      "https://github.com/aurablacklight/WFHelper/issues/new/choose",
-    ]);
-    console.log("PASS: updated sidebar removes community buttons and Feedback opens the fork.");
+    await page.locator("[data-feedback-modal]").waitFor();
+    await page.locator("[data-feedback-cancel]").click();
+    console.log("PASS: updated sidebar removes community buttons and Feedback opens the form.");
   }
   await page.locator(".update-pill").click();
   await until(

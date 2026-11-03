@@ -37,7 +37,11 @@ if (
   )
 )
   e2e.add("e2e/smoke.spec.ts");
-if ([...changed].some((file) => /Sidebar\.svelte$|src\/config\/links\.ts$/.test(file)))
+if (
+  [...changed].some((file) =>
+    /Sidebar\.svelte$|FeedbackModal\.svelte$|src\/config\/links\.ts$/.test(file),
+  )
+)
   e2e.add("e2e/feedback.spec.ts");
 if ([...changed].some((file) => /buildAdvisor|BuildsView|BuildModPreview/.test(file)))
   e2e.add("e2e/builds.spec.ts");

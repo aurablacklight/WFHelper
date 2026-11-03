@@ -261,7 +261,7 @@ describe("Warframe lifecycle", () => {
     h.deleteFails = true;
     await lifecycle.configureWarframeLifecycle(false);
     expect(h.warn).toHaveBeenCalledWith(
-      expect.stringContaining(USER_TASK),
+      "Could not remove the sign-in task:",
       expect.stringContaining("Access is denied"),
     );
   });
