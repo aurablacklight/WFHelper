@@ -1,4 +1,4 @@
-// Parser for a wiki Module:Enemies/data/<faction> Lua page (CC BY-SA). Split out
+// Parser for a wiki Module:Enemies/data/<faction> Lua page (CC BY-NC-SA 3.0). Split out
 // of the build script so a fixture test can exercise it without network access.
 
 /** Reads a Lua `Field = { "a", "b" }` list; returns null when absent or empty. */

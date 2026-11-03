@@ -1,5 +1,5 @@
 // Hand-kept, unlike generated wikiModArt.ts: items whose DE art does not survive a
-// thumbnail (tauforged plates render as near-transparent haze); wiki.warframe.com, CC BY-SA.
+// thumbnail (tauforged plates render as near-transparent haze); wiki.warframe.com, DE art (not CC).
 export const WIKI_ITEM_ART: Readonly<Record<string, string>> = Object.freeze({
   "/Lotus/Types/Gameplay/NarmerSorties/ArchonCrystalAmarMythic": "TauforgedCrimsonArchonShard",
   "/Lotus/Types/Gameplay/NarmerSorties/ArchonCrystalBorealMythic": "TauforgedAzureArchonShard",
