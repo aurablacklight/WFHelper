@@ -48,6 +48,11 @@ async function readJson(body: ReadableStream<Uint8Array> | null, limit: number, 
 	}
 }
 
+/** Discord caps thread names at 100; a cut must not leave half of an emoji behind. */
+function threadName(report: FeedbackReport): string {
+	return `${report.kind === 'bug' ? 'Bug' : 'Feature'}: ${report.title}`.slice(0, 100).replace(/[\uD800-\uDBFF]$/, '');
+}
+
 function discordBody(report: FeedbackReport, forum: boolean): { body: BodyInit; headers?: Record<string, string> } {
 	const fields = [
 		{ name: 'App version', value: report.appVersion, inline: true },
@@ -78,7 +83,7 @@ function discordBody(report: FeedbackReport, forum: boolean): { body: BodyInit; 
 	const payload = {
 		allowed_mentions: { parse: [] },
 		// A forum channel webhook only accepts posts that open a thread; text channels reject the field.
-		...(forum ? { thread_name: `${report.kind === 'bug' ? 'Bug' : 'Feature'}: ${report.title}`.slice(0, 100) } : {}),
+		...(forum ? { thread_name: threadName(report) } : {}),
 		embeds: [
 			{
 				author: { name: report.kind === 'bug' ? 'Bug report' : 'Feature request' },
@@ -105,7 +110,7 @@ export async function handleFeedbackRoute(req: Request, env: Env): Promise<Respo
 	try {
 		const result = await env.FEEDBACK_RATE_LIMITER.limit({ key: clientIp(req) });
 		if (!result.success) return reply({ ok: false, error: 'rate_limited' }, 429);
-		// One ceiling for every sender: per-IP limits do not bound thread creation in the forum.
+		// One ceiling per Cloudflare location: per-IP limits do not bound thread creation in the forum.
 		const global = await env.FEEDBACK_GLOBAL_LIMITER.limit({ key: 'global' });
 		if (!global.success) return reply({ ok: false, error: 'rate_limited' }, 429);
 	} catch {

@@ -1,0 +1,24 @@
+// The fork's feedback-only Worker. Pass --config wrangler.feedback.jsonc to every wrangler
+// command: without it wrangler targets wrangler.jsonc, which is upstream's backend config.
+// The webhook is a secret: wrangler secret put FEEDBACK_DISCORD_WEBHOOK_URL --config wrangler.feedback.jsonc
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "wfhelper-feedback",
+	"main": "src/feedbackWorker.ts",
+	"compatibility_date": "2026-03-01",
+	"workers_dev": false,
+	"preview_urls": false,
+	"routes": [{ "pattern": "wfhelper-feedback.docker-senpai.dev", "custom_domain": true }],
+
+	// Errors only: request metadata for anonymous reports is not worth keeping.
+	"observability": { "enabled": true, "logs": { "invocation_logs": false } },
+
+	// Ids differ from wrangler.jsonc: the same id on one account shares counters across Workers.
+	"ratelimits": [
+		{ "name": "FEEDBACK_RATE_LIMITER", "namespace_id": "41006", "simple": { "limit": 2, "period": 60 } },
+		{ "name": "FEEDBACK_GLOBAL_LIMITER", "namespace_id": "41007", "simple": { "limit": 10, "period": 60 } },
+	],
+
+	// "1" because the webhook targets a forum channel, which needs a thread per report.
+	"vars": { "FEEDBACK_DISCORD_FORUM": "1" },
+}
