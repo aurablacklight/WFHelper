@@ -19,6 +19,6 @@
 		{ "name": "FEEDBACK_GLOBAL_LIMITER", "namespace_id": "41007", "simple": { "limit": 10, "period": 60 } },
 	],
 
-	// "1" because the webhook targets a forum channel, which needs a thread per report.
-	"vars": { "FEEDBACK_DISCORD_FORUM": "1" },
+	// "0": the webhook targets a text channel, which rejects thread names. Use "1" for a forum.
+	"vars": { "FEEDBACK_DISCORD_FORUM": "0" },
 }

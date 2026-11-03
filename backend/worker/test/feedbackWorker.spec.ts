@@ -49,6 +49,13 @@ describe('feedback-only worker', () => {
 		expect(body.thread_name).toBe('Bug: Cannot open panel');
 	});
 
+	it('sends no thread name to a text channel, which would reject it', async () => {
+		target.FEEDBACK_DISCORD_FORUM = '0';
+		expect((await worker.fetch(request(), target)).status).toBe(200);
+		const body = JSON.parse(String(discord.mock.calls[0]![1]?.body)) as Record<string, unknown>;
+		expect(body).not.toHaveProperty('thread_name');
+	});
+
 	it('reports unavailable until the webhook secret is set', async () => {
 		delete target.FEEDBACK_DISCORD_WEBHOOK_URL;
 		expect((await worker.fetch(request(), target)).status).toBe(503);
