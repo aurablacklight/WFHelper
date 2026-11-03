@@ -111,7 +111,8 @@ it leaks. Tests mock delivery and never send feedback to the channel.
 Reports include the user-entered category, title, description, optional contact, app version
 and platform. Diagnostics and one screenshot are opt-in. The modal previews the screenshot
 and lists the diagnostic fields and log size; it does not preview the log contents.
-Diagnostics contain OS version, architecture, language, current view, UI scale and the last
+Diagnostics contain OS version, architecture, language, current view, UI scale, whether a
+warframe.market account is signed in, whether Warframe is running (left out when unknown) and the last
 256 KiB of `main.log`, which can contain file paths, account and player names, and technical events.
 The desktop re-encodes screenshot pixels to discard the original file's embedded metadata.
 The relay reads no separate account, inventory or machine-identifier files. The log is sent
@@ -119,6 +120,11 @@ as recorded and is not redacted by the feedback relay.
 Screenshots and free text can contain personal information; restrict channel membership and
 delete reports when they are no longer needed. Discord retains the messages until deleted;
 the Worker does not store feedback in KV or print report content in its request logs.
+
+Every post also carries `report.json`: the report fields, the Worker's `receivedAt` timestamp and
+whether a log or screenshot is attached, so a triage bot can read a report without parsing the
+embed. It holds the same data as the embed, including the optional contact, and none of the log
+or screenshot contents.
 
 The endpoint reads at most 2,000,000 bytes of JSON as a stream, keeps at most a 256 KiB log tail,
 and accepts a PNG, JPEG or WebP attachment of up to 1 MiB. It keeps the webhook server-side,

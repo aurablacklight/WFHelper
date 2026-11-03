@@ -53,7 +53,30 @@ function threadName(report: FeedbackReport): string {
 	return `${report.kind === 'bug' ? 'Bug' : 'Feature'}: ${report.title}`.slice(0, 100).replace(/[\uD800-\uDBFF]$/, '');
 }
 
-function discordBody(report: FeedbackReport, forum: boolean): { body: BodyInit; headers?: Record<string, string> } {
+const yesNo = (value: boolean): string => (value ? 'yes' : 'no');
+
+/** Every report field except the attachments, so a triage bot can read the report without parsing the embed. */
+function reportJson(report: FeedbackReport, receivedAt: string): string {
+	const { log, ...diagnostics } = report.diagnostics ?? {};
+	return JSON.stringify(
+		{
+			schema: 1,
+			receivedAt,
+			kind: report.kind,
+			title: report.title,
+			description: report.description,
+			...(report.contact ? { contact: report.contact } : {}),
+			appVersion: report.appVersion,
+			platform: report.platform,
+			...(report.diagnostics ? { diagnostics: { ...diagnostics, logAttached: log !== undefined } } : {}),
+			screenshotAttached: report.screenshot !== undefined,
+		},
+		null,
+		2,
+	);
+}
+
+function discordBody(report: FeedbackReport, forum: boolean, receivedAt: string): { body: BodyInit; headers?: Record<string, string> } {
 	const fields = [
 		{ name: 'App version', value: report.appVersion, inline: true },
 		{ name: 'Platform', value: report.platform, inline: true },
@@ -63,7 +86,15 @@ function discordBody(report: FeedbackReport, forum: boolean): { body: BodyInit; 
 		const details = report.diagnostics;
 		fields.push({
 			name: 'Diagnostics',
-			value: `OS: ${details.osVersion}\nArchitecture: ${details.arch}\nLanguage: ${details.locale}\nView: ${details.view}\nUI scale: ${details.uiScale}`,
+			value: [
+				`OS: ${details.osVersion}`,
+				`Architecture: ${details.arch}`,
+				`Language: ${details.locale}`,
+				`View: ${details.view}`,
+				`UI scale: ${details.uiScale}`,
+				...(details.wfmSignedIn === undefined ? [] : [`warframe.market signed in: ${yesNo(details.wfmSignedIn)}`]),
+				...(details.gameRunning === undefined ? [] : [`Warframe running: ${yesNo(details.gameRunning)}`]),
+			].join('\n'),
 			inline: false,
 		});
 	}
@@ -79,6 +110,7 @@ function discordBody(report: FeedbackReport, forum: boolean): { body: BodyInit; 
 	if (report.diagnostics?.log) {
 		files.push({ filename: 'main.log', blob: new Blob([report.diagnostics.log], { type: 'text/plain' }) });
 	}
+	files.push({ filename: 'report.json', blob: new Blob([reportJson(report, receivedAt)], { type: 'application/json' }) });
 	const imageName = report.screenshot ? files[0].filename : null;
 	const payload = {
 		allowed_mentions: { parse: [] },
@@ -130,7 +162,7 @@ export async function handleFeedbackRoute(req: Request, env: Env): Promise<Respo
 		return await withAbortTimeout(15000, async (signal) => {
 			const response = await fetch(url, {
 				method: 'POST',
-				...discordBody(report, env.FEEDBACK_DISCORD_FORUM === '1'),
+				...discordBody(report, env.FEEDBACK_DISCORD_FORUM === '1', new Date().toISOString()),
 				signal,
 				// workerd has no redirect: 'error'; a redirect surfaces as a non-ok status below instead.
 				redirect: 'manual',
