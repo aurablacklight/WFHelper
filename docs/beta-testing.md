@@ -90,8 +90,8 @@ serves the newer build, installs the older build in `.tmp/beta-update-test/insta
 and exercises Check updates, Download, and Restart & install. It checks the new
 version, retained settings and inventory, and the final Up To Date response.
 Use `--installed` to start from an existing installation of the older version.
-The optional `--check-fork-sidebar` flag also verifies the fork Feedback link and
-absence of sidebar community buttons. Screenshots and feed requests are saved
+The optional `--check-fork-sidebar` flag also verifies the Feedback form opens and the
+sidebar has no community buttons. Screenshots and feed requests are saved
 under `.tmp/beta-update-test`.
 
 To keep the local feed available after the test:
