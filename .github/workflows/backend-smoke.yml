@@ -1,8 +1,9 @@
 name: Backend smoke
 
+# Manual only: from GitHub's runners upstream's api.wfhelper.com answers 403, so the
+# schedule failed every run without saying anything about the backend. Restore it once
+# WORKER_URL points at a backend the fork runs.
 on:
-  schedule:
-    - cron: "17 */6 * * *"
   workflow_dispatch:
 
 jobs:

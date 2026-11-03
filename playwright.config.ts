@@ -1,7 +1,12 @@
 ﻿import { defineConfig } from "@playwright/test";
 
+// CI shards set this through scripts/e2e-shard.mjs: a comma-separated list of spec file
+// names, matched exactly rather than as command-line regex filters.
+const shardFiles = process.env.WFH_E2E_FILES?.split(",").filter(Boolean);
+
 export default defineConfig({
   testDir: "./e2e",
+  ...(shardFiles?.length ? { testMatch: shardFiles } : {}),
   timeout: 120_000,
   // Playwright defaults every auto-waiting assertion and expect.poll to 5s, which
   // four concurrent Electron apps exceed for a view mount or a window resize.
