@@ -310,7 +310,11 @@ type Ok = { ok: boolean };
 const api = {
   getFeedbackContext: invoke(FEEDBACK_CONTEXT, "main").of<
     [],
-    { appVersion: string; platform: string; diagnostics: { osVersion: string; arch: string } }
+    {
+      appVersion: string;
+      platform: string;
+      diagnostics: { osVersion: string; arch: string; wfmSignedIn: boolean; gameRunning?: boolean };
+    }
   >(),
   submitFeedback: invoke(FEEDBACK_SUBMIT, "main").of<[report: FeedbackReport], FeedbackResult>(),
 

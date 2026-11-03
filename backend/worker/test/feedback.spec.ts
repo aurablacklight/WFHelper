@@ -5,6 +5,12 @@ import type { Env } from '../src/types';
 import { resetDailyBudgetTripStateForTest } from '../src/security/dailyBudget';
 import { FEEDBACK_LIMITS } from '../../../config/shared/feedback';
 
+/** Every report is multipart now that report.json always rides along; the Discord payload is its payload_json part. */
+function payloadOf(body: BodyInit | null | undefined) {
+	expect(body).toBeInstanceOf(FormData);
+	return JSON.parse(String((body as FormData).get('payload_json')));
+}
+
 const webhook = 'https://discord.com/api/webhooks/123456/test-token';
 const report = {
 	kind: 'bug',
@@ -56,7 +62,7 @@ describe('private Discord feedback', () => {
 		expect(options).toMatchObject({ method: 'POST', redirect: 'manual', signal: expect.any(AbortSignal) });
 		// The runtime rejects unsupported RequestInit values that a mocked fetch would never see.
 		expect(() => new Request(String(url), options)).not.toThrow();
-		expect(JSON.parse(String(options?.body))).toMatchObject({
+		expect(payloadOf(options?.body)).toMatchObject({
 			allowed_mentions: { parse: [] },
 			embeds: [{ author: { name: 'Bug report' }, title: report.title }],
 		});
@@ -100,6 +106,7 @@ describe('private Discord feedback', () => {
 		expect(payload.attachments).toEqual([
 			{ id: 0, filename: 'screenshot.png' },
 			{ id: 1, filename: 'main.log' },
+			{ id: 2, filename: 'report.json' },
 		]);
 		expect(payload.embeds[0].image.url).toBe('attachment://screenshot.png');
 		expect(JSON.stringify(payload)).not.toContain('line 2');
@@ -111,14 +118,72 @@ describe('private Discord feedback', () => {
 		expect((await send(request(JSON.stringify(logOnly)))).status).toBe(200);
 		body = upstream.mock.calls[0][1]?.body as FormData;
 		payload = JSON.parse(String(body.get('payload_json')));
-		expect(payload.attachments).toEqual([{ id: 0, filename: 'main.log' }]);
+		expect(payload.attachments).toEqual([
+			{ id: 0, filename: 'main.log' },
+			{ id: 1, filename: 'report.json' },
+		]);
 		expect(payload.embeds[0]).not.toHaveProperty('image');
 		file = body.get('files[0]') as File;
 		expect(file.name).toBe('main.log');
-		expect(body.get('files[1]')).toBeNull();
+		expect(body.get('files[2]')).toBeNull();
 
 		const oversized = { ...logOnly, diagnostics: { ...logOnly.diagnostics, log: 'x'.repeat(FEEDBACK_LIMITS.logChars + 1) } };
 		expect((await send(request(JSON.stringify(oversized)))).status).toBe(400);
+	});
+
+	it('attaches report.json with every field but the attachment contents', async () => {
+		const full = {
+			...report,
+			contact: 'tester',
+			diagnostics: {
+				osVersion: 'o',
+				arch: 'x64',
+				locale: 'en',
+				view: 'inventory',
+				uiScale: 1,
+				wfmSignedIn: false,
+				gameRunning: true,
+				log: 'secret log line\n',
+			},
+			screenshot: { mediaType: 'image/png', data: btoa('\x89PNG\r\n\x1a\nfixture') },
+		};
+		expect((await send(request(JSON.stringify(full)))).status).toBe(200);
+		const body = upstream.mock.calls[0][1]?.body as FormData;
+		const file = body.get('files[2]') as File;
+		expect([file.name, file.type]).toEqual(['report.json', 'application/json']);
+		const json = JSON.parse(await file.text());
+		expect(json).toEqual({
+			schema: 1,
+			receivedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+			kind: 'bug',
+			title: report.title,
+			description: report.description,
+			contact: 'tester',
+			appVersion: report.appVersion,
+			platform: report.platform,
+			diagnostics: {
+				osVersion: 'o',
+				arch: 'x64',
+				locale: 'en',
+				view: 'inventory',
+				uiScale: 1,
+				wfmSignedIn: false,
+				gameRunning: true,
+				logAttached: true,
+			},
+			screenshotAttached: true,
+		});
+		expect(await file.text()).not.toContain('secret log line');
+		const diagnostics = payloadOf(body).embeds[0].fields.find((field: { name: string }) => field.name === 'Diagnostics');
+		expect(diagnostics.value).toContain('warframe.market signed in: no');
+		expect(diagnostics.value).toContain('Warframe running: yes');
+
+		upstream.mockClear();
+		expect((await send()).status).toBe(200);
+		const minimal = JSON.parse(await ((upstream.mock.calls[0][1]?.body as FormData).get('files[0]') as File).text());
+		expect(minimal).not.toHaveProperty('diagnostics');
+		expect(minimal).not.toHaveProperty('contact');
+		expect(minimal.screenshotAttached).toBe(false);
 	});
 
 	it('logs the Discord error code of a rejected post without its message', async () => {
@@ -138,11 +203,11 @@ describe('private Discord feedback', () => {
 		// The test env inherits the production var, so start from a text-channel setup.
 		delete target.FEEDBACK_DISCORD_FORUM;
 		expect((await send(request(JSON.stringify(long)))).status).toBe(200);
-		expect(JSON.parse(String(upstream.mock.calls[0][1]?.body))).not.toHaveProperty('thread_name');
+		expect(payloadOf(upstream.mock.calls[0][1]?.body)).not.toHaveProperty('thread_name');
 		upstream.mockClear();
 		target.FEEDBACK_DISCORD_FORUM = '1';
 		expect((await send(request(JSON.stringify(long)))).status).toBe(200);
-		const payload = JSON.parse(String(upstream.mock.calls[0][1]?.body));
+		const payload = payloadOf(upstream.mock.calls[0][1]?.body);
 		expect(payload.thread_name).toBe(`Bug: ${'t'.repeat(95)}`);
 		expect(payload.thread_name).toHaveLength(100);
 	});

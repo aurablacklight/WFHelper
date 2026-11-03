@@ -315,6 +315,16 @@
                     <dd class="m-0 text-text-secondary">{diagnostics.view}</dd>
                     <dt class="text-text-muted">{$tr("appearance.appScaleRow")}</dt>
                     <dd class="m-0 text-text-secondary">{diagnostics.uiScale}</dd>
+                    <dt class="text-text-muted">{$tr("feedback.wfmSignedIn")}</dt>
+                    <dd class="m-0 text-text-secondary">
+                      {$tr(diagnostics.wfmSignedIn ? "feedback.yes" : "feedback.no")}
+                    </dd>
+                    {#if diagnostics.gameRunning !== undefined}
+                      <dt class="text-text-muted">{$tr("feedback.gameRunning")}</dt>
+                      <dd class="m-0 text-text-secondary">
+                        {$tr(diagnostics.gameRunning ? "feedback.yes" : "feedback.no")}
+                      </dd>
+                    {/if}
                     <dt class="text-text-muted">{$tr("feedback.logFile")}</dt>
                     <dd class="m-0 text-text-secondary">
                       {$tr("feedback.logTail", { kb: logKb })}

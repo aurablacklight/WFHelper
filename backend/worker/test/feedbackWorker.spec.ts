@@ -2,6 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker from '../src/feedbackWorker';
 import type { Env } from '../src/types';
 
+/** Every report is multipart now that report.json always rides along; the Discord payload is its payload_json part. */
+function payloadOf(body: BodyInit | null | undefined) {
+	expect(body).toBeInstanceOf(FormData);
+	return JSON.parse(String((body as FormData).get('payload_json')));
+}
+
 const report = {
 	kind: 'bug',
 	title: 'Cannot open panel',
@@ -45,14 +51,14 @@ describe('feedback-only worker', () => {
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ ok: true });
 		expect(discord).toHaveBeenCalledTimes(1);
-		const body = JSON.parse(String(discord.mock.calls[0]![1]?.body)) as { thread_name: string };
+		const body = payloadOf(discord.mock.calls[0]![1]?.body) as { thread_name: string };
 		expect(body.thread_name).toBe('Bug: Cannot open panel');
 	});
 
 	it('sends no thread name to a text channel, which would reject it', async () => {
 		target.FEEDBACK_DISCORD_FORUM = '0';
 		expect((await worker.fetch(request(), target)).status).toBe(200);
-		const body = JSON.parse(String(discord.mock.calls[0]![1]?.body)) as Record<string, unknown>;
+		const body = payloadOf(discord.mock.calls[0]![1]?.body) as Record<string, unknown>;
 		expect(body).not.toHaveProperty('thread_name');
 	});
 
@@ -90,7 +96,7 @@ describe('feedback-only worker', () => {
 	it('does not leave half of an emoji in the thread name', async () => {
 		const title = `${'x'.repeat(94)}\u{1F600}more`;
 		await worker.fetch(request({ body: JSON.stringify({ ...report, title }) }), target);
-		const body = JSON.parse(String(discord.mock.calls[0]![1]?.body)) as { thread_name: string };
+		const body = payloadOf(discord.mock.calls[0]![1]?.body) as { thread_name: string };
 		expect(body.thread_name).toBe(`Bug: ${'x'.repeat(94)}`);
 	});
 });

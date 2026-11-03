@@ -15,6 +15,8 @@ import { withAbortTimeout } from "../config/shared/fetchWithTimeout";
 
 import { getLogFilePath, withScope } from "../services/logger";
 import { redactLogPaths, redactLogSecrets } from "../services/logPrivacy";
+import { getWarframeProcessState, isWarframeRunningCached } from "../services/warframeStatus";
+import { getSession } from "../services/wfmSession";
 
 import { handle } from "./routeHandlers";
 import { mainWindowRoutes } from "../config/shared/ipcRoutes";
@@ -22,11 +24,22 @@ import { mainWindowRoutes } from "../config/shared/ipcRoutes";
 const { api } = mainWindowRoutes;
 const log = withScope("feedback");
 
+// Null means the app could not tell; the report then leaves the field out rather than guess.
+function gameRunning(): boolean | null {
+  return process.platform === "win32" ? getWarframeProcessState() : isWarframeRunningCached();
+}
+
 function feedbackContext() {
+  const running = gameRunning();
   return {
     appVersion: app.getVersion(),
     platform: process.platform,
-    diagnostics: { osVersion: os.release(), arch: process.arch },
+    diagnostics: {
+      osVersion: os.release(),
+      arch: process.arch,
+      wfmSignedIn: getSession().loggedIn,
+      ...(running === null ? {} : { gameRunning: running }),
+    },
   };
 }
 
@@ -71,6 +84,7 @@ export function register(): void {
     report.appVersion = context.appVersion;
     report.platform = context.platform;
     if (report.diagnostics) {
+      delete report.diagnostics.gameRunning;
       Object.assign(report.diagnostics, context.diagnostics);
       const log = readLogTail();
       if (log) report.diagnostics.log = log;

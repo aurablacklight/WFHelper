@@ -18,11 +18,20 @@ const mocks = vi.hoisted(() => ({
   getVersion: vi.fn(() => "2.0.0-test"),
   logPath: null as string | null,
   warn: vi.fn(),
+  loggedIn: false,
+  gameRunning: null as boolean | null,
 }));
 vi.mock("electron", () => ({ app: { getVersion: mocks.getVersion } }));
 vi.mock("../../services/logger", () => ({
   getLogFilePath: () => mocks.logPath,
   withScope: () => ({ warn: mocks.warn }),
+}));
+vi.mock("../../services/wfmSession", () => ({
+  getSession: () => ({ loggedIn: mocks.loggedIn }),
+}));
+vi.mock("../../services/warframeStatus", () => ({
+  getWarframeProcessState: () => mocks.gameRunning,
+  isWarframeRunningCached: () => mocks.gameRunning,
 }));
 vi.mock("../../ipc/ipcSecurity", () => ({
   handleAuthorized: mocks.handleAuthorized,
@@ -83,6 +92,21 @@ describe("feedback payload validation", () => {
         ...report,
         diagnostics: { ...diagnostics, log: "x".repeat(FEEDBACK_LIMITS.logChars + 1) },
       }),
+    ).toBeNull();
+  });
+
+  it("keeps boolean session flags and rejects anything else", () => {
+    expect(
+      normalizeFeedback({
+        ...report,
+        diagnostics: { ...diagnostics, wfmSignedIn: true, gameRunning: false },
+      })?.diagnostics,
+    ).toEqual({ ...diagnostics, wfmSignedIn: true, gameRunning: false });
+    expect(
+      normalizeFeedback({ ...report, diagnostics: { ...diagnostics, wfmSignedIn: "yes" } }),
+    ).toBeNull();
+    expect(
+      normalizeFeedback({ ...report, diagnostics: { ...diagnostics, gameRunning: null } }),
     ).toBeNull();
   });
 
@@ -155,8 +179,32 @@ describe("feedback submission IPC", () => {
     expect(context()).toEqual({
       appVersion: "2.0.0-test",
       platform: process.platform,
-      diagnostics: { osVersion: os.release(), arch: process.arch },
+      diagnostics: { osVersion: os.release(), arch: process.arch, wfmSignedIn: false },
     });
+    mocks.loggedIn = true;
+    mocks.gameRunning = true;
+    try {
+      expect(context().diagnostics).toEqual({
+        osVersion: os.release(),
+        arch: process.arch,
+        wfmSignedIn: true,
+        gameRunning: true,
+      });
+    } finally {
+      mocks.loggedIn = false;
+      mocks.gameRunning = null;
+    }
+  });
+
+  it("drops a renderer-sent game state the main process cannot confirm", async () => {
+    request.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+    await submit(null, {
+      ...report,
+      diagnostics: { ...diagnostics, wfmSignedIn: true, gameRunning: true },
+    });
+    const sent = JSON.parse(String(request.mock.calls[0]![1]?.body)).diagnostics;
+    expect(sent.wfmSignedIn).toBe(false);
+    expect(sent).not.toHaveProperty("gameRunning");
   });
 
   it("rejects invalid input without contacting the relay", async () => {
@@ -185,7 +233,12 @@ describe("feedback submission IPC", () => {
       description: report.description.trim(),
       appVersion: "2.0.0-test",
       platform: process.platform,
-      diagnostics: { ...diagnostics, osVersion: os.release(), arch: process.arch },
+      diagnostics: {
+        ...diagnostics,
+        osVersion: os.release(),
+        arch: process.arch,
+        wfmSignedIn: false,
+      },
     });
     expect(await submit(null, report)).toEqual({ ok: false, error: "rate_limited" });
     expect(request).toHaveBeenCalledTimes(1);

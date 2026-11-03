@@ -27,6 +27,10 @@ export interface FeedbackReport {
     locale: string;
     view: string;
     uiScale: number;
+    /** Whether a warframe.market account was signed in when the report was sent. */
+    wfmSignedIn?: boolean;
+    /** Whether Warframe was running; omitted when the app could not tell. */
+    gameRunning?: boolean;
     log?: string;
   };
   screenshot?: {
@@ -77,6 +81,11 @@ export function normalizeFeedback(value: unknown): FeedbackReport | null {
     )
       return null;
     result.diagnostics = { osVersion, arch, locale, view, uiScale };
+    for (const key of ["wfmSignedIn", "gameRunning"] as const) {
+      if (details[key] === undefined) continue;
+      if (typeof details[key] !== "boolean") return null;
+      result.diagnostics[key] = details[key];
+    }
     if (details.log !== undefined) {
       if (typeof details.log !== "string" || details.log.length > FEEDBACK_LIMITS.logChars)
         return null;
