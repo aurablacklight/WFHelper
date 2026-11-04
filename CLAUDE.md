@@ -55,7 +55,7 @@ Issues live in the fork's GitHub Issues (`gh ... -R aurablacklight/WFHelper`). S
 
 ### Triage labels
 
-The five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Four labels: `needs-triage`, `needs-info`, `ready-for-agent`, `wontfix`. Never apply `ready-for-human`. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
